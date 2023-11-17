@@ -9,25 +9,54 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Load data and parse
+## Load libraries
 
 ```{r}
 library(tidyverse)
 library(reshape)
+library(ggplot2)
+library(vegan)
+library(ggmap)
+library(sp)
 
-species <- read.csv("~/Desktop/Master/Analyses/species_table.csv", row.names = 1)
+
+
+```
+
+
+## Load data and parse
+
+```{r}
+
+figs_dir = file.path("/Users/alexaei/Documents/projects/master_thesis_projects/Lone/manuscript/Fish_diversity_manuscript_figures")
+data_dir = file.path("/Users/alexaei/repos/edna_citizen/data")
+
+species <- read.csv(file.path(data_dir, "species_table_lca_n.csv"), row.names = 1)
 
 #change the name
 rownames(species) <- gsub("_L001_R1_001.fastq.gz", "", rownames(species))
 rownames(species) <- gsub("\\_.*", "", rownames(species))
+
+remove_samples = c("1F", "1L", "2F", "2L", "3F", "3L", "4F", "4L")
+species = species[!rownames(species) %in% remove_samples,]
 
 
 #Remove all samples with less than 400 total reads
 rowSums(species)
 species_cleaned = species[which(rowSums(species)>400),]
 # remove the positive control
-species_cleaned = species_cleaned[-80,]
+species_cleaned = species_cleaned[-which(rownames(species_cleaned) == "P"),]
+rowSums(species_cleaned)
 
+#get mata data
+data <- as.data.frame(read.csv(file.path(data_dir, "Data_master_project.csv")))
+rownames(data) = data$ID
+
+#remove data from samples removed in the cleaning process
+keep_samples = rownames(species_cleaned)
+data_cleaned = data[rownames(data) %in% keep_samples,]
+data_cleaned = data_cleaned[order(rownames(data_cleaned)),]
+species_cleaned = species_cleaned[order(rownames(species_cleaned)),]
 
 #make species into proportion
 prop_species_clean = t(prop.table(as.matrix(species_cleaned), margin = 1)*100)
@@ -51,7 +80,7 @@ fish_colors = setNames(color_palette_fish, levels(melted_prop_species_clean$X1))
 
 
 
-cairo_ps(file.path(figs_dir, "fish_species.eps"), width=80/25.4, height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+cairo_ps(file.path(figs_dir, "S6_fish_species.eps"), width=160/25.4, height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
 ggplot(melted_prop_species_clean, aes(x = X2, y = value, fill = X1), cex=4)+
   geom_bar(stat = "identity", position = "stack", alpha = .5, width = 1, size = 10)+
   guides(fill = guide_legend(title = "Fish species"))+
@@ -61,17 +90,16 @@ ggplot(melted_prop_species_clean, aes(x = X2, y = value, fill = X1), cex=4)+
   scale_fill_manual(values = fish_colors)+
   scale_x_discrete(limits = rev(levels(melted_prop_species_clean$X2))) +
   theme_classic() + 
-  theme(axis.text = element_text(size = 14),
-        axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),
-        legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16))
+  theme(axis.text = element_text(size = 9),
+        axis.title.x = element_text(size = 11), # set size of x axis label
+        axis.title.y = element_text(size = 11),
+        legend.text = element_text(size = 11), # set size of legend text
+        legend.title = element_text(size = 11))
 
 dev.off()
 
 
 ```
-samme plott men uten dei sampling point med under 400 arta
 
 ```{r}
 
@@ -80,26 +108,10 @@ samme plott men uten dei sampling point med under 400 arta
 
 
 ```{r}
-#get meta data
-data <- as.data.frame(read.csv("~/Desktop/Master/Analyses/Data_master_project.csv"))
-rownames(data) = data$ID
 
 
-rows_to_keep <- c("11", "12", "18", "23", "45", "48", "79", "86", "91", "96", "95", "98", "111", "120", "139", "146", "160", "162", "201", "205")
-bac <- data[rownames(data) %in% rows_to_keep, ]
-
-#remove data from samples removed in the cleaning process
-keep_samples = rownames(species_cleaned)
-data_cleaned = data[rownames(data) %in% keep_samples,]
-data_cleaned = data_cleaned[order(rownames(data_cleaned)),]
-species_cleaned = species_cleaned[order(rownames(species_cleaned)),]
-
-library(vegan)
-library(ggplot2)
-
-
-#get data on environmental perimeters
-env.data <- as.data.frame(read.csv("~/Desktop/Master/Analyses/environmental_data.csv", sep = ";"))
+#get data on environmental parameters
+env.data <- as.data.frame(read.csv(file.path(data_dir, "environmental_data.csv"), sep = ";"))
 env.data <- filter(env.data,`ID`!="NA")
 rownames(env.data) = env.data$ID
 
@@ -113,82 +125,13 @@ env.data_cleaned <- data.frame(lapply(env.data_cleaned[1:6], as.numeric))
 env.data_cleaned <- cbind(env.data_cleaned, groups)
 
 
-## include absorbance data
-
-#create a list of the files from your target directory
-file_list <- list.files("~/Desktop/Master/Lone")
-
-#add all files into dataset
-df <- NULL
-for (i in 1:length(file_list)) {
-  di <- read.table(paste("~/Desktop/Master/Lone", file_list[i], sep="/"), sep = ",", skip=2)
-  
-  df <- rbind(df, data.frame(id=gsub(".txt", "", file_list[i]), wl=di$V1, abs=di$V2))
-}
-
-#add id
-df$id <- as.numeric(substr(df$id, 7,9))
-df <- subset(df, complete.cases(df)) # Remove NAs
-
-library(ggplot2)
-
-df.400 <- subset(df, wl == 400)
-
-df.700 <- subset(df, wl == 700)
-
-
-
-
-#filtering out data to lost localities
-keep_samples <- as.numeric(keep_samples)
-
-rownames(df.400) = df.400$id
-df.400_cleaned = df.400[rownames(df.400) %in% keep_samples,]
-df.400_cleaned = df.400_cleaned[order(rownames(df.400_cleaned)),]
-
-rownames(df.700) = df.700$id
-df.700_cleaned = df.700[rownames(df.700) %in% keep_samples,]
-df.700_cleaned = df.700_cleaned[order(rownames(df.700_cleaned)),]
-
-#make data point for all missing locations for 400 and 700nm wavelengths
-y <- env.data_cleaned$ID[!(env.data_cleaned$ID %in% df.400_cleaned$id)]
-
-for (i in 1:length(y)){
-  df.400_cleaned[nrow(df.400_cleaned) + 1,] <- c(y[i], 400, NA)
-
-}
-
-for (i in 1:length(y)){
-  df.700_cleaned[nrow(df.700_cleaned) + 1,] <- c(y[i], 700, NA)
-
-}
-
-#install.packages("mice")
-library(mice)
-#library(VIM)
-#plot showing how much data must be implemneted?
-#aggr_plot <- aggr(df.400_cleaned, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(df.400_cleaned), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
-#impliment data for 400 and 700 wavelengths
-tempData <- mice(df.400_cleaned,m=5,maxit=50,meth='pmm',seed=500)
-new.400 <- complete(tempData, 1)
-
-tempData <- mice(df.700_cleaned,m=5,maxit=50,meth='pmm',seed=500)
-new.700 <- complete(tempData, 1)
-
-#remove background noice from 400 wavelength dataset
-Absorbance= new.400$abs - new.700$abs
-# add to environmental parameter data
-env.data_cleaned <- cbind(env.data_cleaned, Absorbance)
-
-
-library(ggmap)
-
-png("ori_map.png", height = 1500, width = 1200)
+cairo_ps(file.path(figs_dir, "ori_map.eps"), width=80/25.4, height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
  ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
    geom_text(data = data, aes(x = Lon, y = Lat, label = ID), color = "red", size = 5) +
 # geom_point(data=data, aes(x=Lon, y=Lat), color="red")+
   labs(x = "Longitude", y = "Latitude")
 dev.off()
+
 df2 <- merge(x=env.data,y=data, by="ID", all.x=TRUE) %>%
   mutate(TN = as.numeric(TN))
 
@@ -220,7 +163,7 @@ how much is due to dispersal of dna
 
 add numbers 1 or 0 for precense in map
 ```{r}
-historic.data <-  read.csv("~/Desktop/Master/Analyses/historic.data.csv", sep = ";")
+historic.data <-  read.csv(file.path(data_dir, "historic.data.csv"), sep = ";")
 
 historic.data <- subset(historic.data, select = c(institution, validScientificName, latitude, longitude, dateTimeCollected ))
 
@@ -230,27 +173,23 @@ colnames(historic.data) <- c("institution", "species", "Lat", "Lon", "date")
 
 historic.data <- historic.data[grepl("_", historic.data$species), ]
 
-
-
-#install.packages("ggmap")
-library(ggmap)
-
+cairo_ps(file.path(figs_dir, "hist_map.eps"), width=80/25.4, height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
 ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
   geom_point(data=historic.data, aes(x=longitude, y=latitude), color="red")+
   labs(x = "Longitude", y = "Latitude")
-
+dev.off()
 ```
+
+
+
 barplott med art mot area?
+
+
+
+
 ```{r}
 
-
-library(sp)
-#library(dplyr)
-#library(purrr)
-library(plyr)
-
-
-hal.data <- read.csv("~/Desktop/Master/Analyses/hal.data.csv", check.names = F, sep =";")
+hal.data <- read.csv(file.path(data_dir, "hal.data.csv"), check.names = F, sep =",")
 
 Gadus_morhua <- hal.data[, 4] + hal.data[, 7]
 hal.data <- hal.data[, -7]
@@ -292,9 +231,6 @@ target.df <- subset(historical.2000, select = c(Lon, Lat))
 colnames(target.df) <- c("Lon", "Lat")
 target_base <- rbind(base.df, target.df)
 
-
-
-
 base.mtx <- as.matrix(base.df)
 target.mtx <- as.matrix(target.df)
 
@@ -306,7 +242,7 @@ lapply(which.min) %>%
 unlist %>%
 bind_cols(target.df, out = .)
 
-test <- match_df(cx, base.df, on=c("Lon", "Lat"))
+test <- plyr::match_df(cx, base.df, on=c("Lon", "Lat"))
 
 cy <- lapply(1:nrow(target.df), function(x){
     spDistsN1(pts = base.mtx, pt = target.mtx[x, ], longlat =T)}) %>%
@@ -343,7 +279,7 @@ colnames(cc) <- c( "out", "species")
 
 #cc$species <- gsub("\\_.*", "", rownames(species_cleaned))
 
-test2 <- match_df(cc, original, on = c("species", "out"))
+test2 <- plyr::match_df(cc, original, on = c("species", "out"))
 test2 <- unique(test2$species)
 
 values <- c(1:79)
@@ -415,16 +351,16 @@ colnames(out_of_reach) <- c("species", "type")
 lost <- subset(lost, select = species)
 lost$type <- "lost"                           
 
-blebb <- match_df(recent_species, cc, on = "species")
+blebb <- plyr::match_df(recent_species, cc, on = "species")
 blebb <- unique(blebb$species)
 bebe <- unique(cc$species)
 babe <- unique(recent_species$species)
 
 ```
-legg til sampleid så eg veit hvilket punkt det er nærmest
+## comparisons of method outputs
 
-
-fisher.test og chisq.test
+add sample IDs to identify which points are closest
+and run fisher.test and chisq.test
 ```{r}
 
 # Grouping your dataframe based on species and then taking the number of observations in each group

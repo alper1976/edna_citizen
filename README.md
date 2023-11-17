@@ -30,9 +30,8 @@ hal.data.csv
 historic.data_big.csv
 historic.data.csv
 seqtab_nochim.rds - output file from dada2 analysis
-phyloseq_mifish_lca.rds
-species_table_n.csv - species tables from the eDNA analysis
-species_table.csv - species tables from the eDNA analysis
+phyloseq_mifish_lca.rds - species tables from the eDNA analysis with taxonomy based on blast and lca
+species_table_lca.csv - species tables from the eDNA analysis based on lca
 strandnot_2010_2022.csv - data from the beach seine survey
 
 ### Scripts
