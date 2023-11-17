@@ -223,15 +223,6 @@ write(paste0("Write tracking file to output."), stdout())
 
 uniquesToFasta(seqtab.final, fout = file.path(path_to_output, "rep-seqs.fna"), ids=colnames(seqtab.final))
 
-# # Assign taxonomy
-# write(paste0("Starting taxonomy analysis."), stdout())
-# tax <- assignTaxonomy(seqtab.final, opt$path_to_silva, multithread=FALSE)  ### should be used for plotting taxonomy
-#
-# # Write to file
-# saveRDS(tax, file.path(path_to_output, "tax_final.rds"))
-# tax = readRDS(file.path(path_to_output, "tax_final.rds"))
-
-
 save.image(file.path(path_to_output, "rrun_final.RData"))
 
 write(paste0("Analysis run to the end."), stdout())
