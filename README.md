@@ -29,11 +29,11 @@ hal.data2.csv
 hal.data.csv
 historic.data_big.csv
 historic.data.csv
-phyloseq_mifish_lca_right.rds
+seqtab_nochim.rds - output file from dada2 analysis
 phyloseq_mifish_lca.rds
 species_table_n.csv - species tables from the eDNA analysis
 species_table.csv - species tables from the eDNA analysis
-strandnot 2010-2022.csv - data from the beach seine survey
+strandnot_2010_2022.csv - data from the beach seine survey
 
 ### seq_data_processing
 Here you can find the code to obtain the Amplicon sequence variants (ASV) tables from the raw sequencing data. You can also find code for the taxonomic analyses using an in-house fish database (ScandiFish) and LCA analysis.

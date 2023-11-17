@@ -9,10 +9,8 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Load data and parse
 
-Make longer
-
-handler om korleis du skriver ut - pdf koden
 ```{r}
 library(tidyverse)
 library(reshape)
@@ -24,23 +22,11 @@ rownames(species) <- gsub("_L001_R1_001.fastq.gz", "", rownames(species))
 rownames(species) <- gsub("\\_.*", "", rownames(species))
 
 
-#decontaminate, remove Zoarces_viviparus
-
-species = subset(species, select = -c(no.identification) )
-
 #Remove all samples with less than 400 total reads
 rowSums(species)
 species_cleaned = species[which(rowSums(species)>400),]
 # remove the positive control
 species_cleaned = species_cleaned[-80,]
-
-
-#clean up faults n the blastingprocess
-
-colnames(species_cleaned)[which(names(species_cleaned) == "Chelidonichthys_cuculus")] <- "Eutrigla_gurnardus"
-colnames(species_cleaned)[which(names(species_cleaned) == "Thunnus_alalunga")] <- "Thunnus_thynnus"
-colnames(species_cleaned)[which(names(species_cleaned) == "Gobiusculus_flavescens")] <- "Pomatoschistus_flavescens"
-
 
 
 #make species into proportion
@@ -65,8 +51,7 @@ fish_colors = setNames(color_palette_fish, levels(melted_prop_species_clean$X1))
 
 
 
-
-  png("fish_species.png", height = 900, width = 700)
+cairo_ps(file.path(figs_dir, "fish_species.eps"), width=80/25.4, height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
 ggplot(melted_prop_species_clean, aes(x = X2, y = value, fill = X1), cex=4)+
   geom_bar(stat = "identity", position = "stack", alpha = .5, width = 1, size = 10)+
   guides(fill = guide_legend(title = "Fish species"))+
@@ -95,7 +80,7 @@ samme plott men uten dei sampling point med under 400 arta
 
 
 ```{r}
-#get mata data
+#get meta data
 data <- as.data.frame(read.csv("~/Desktop/Master/Analyses/Data_master_project.csv"))
 rownames(data) = data$ID
 
