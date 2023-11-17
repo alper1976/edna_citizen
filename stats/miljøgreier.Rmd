@@ -1,0 +1,597 @@
+---
+title: "miljøgreier"
+author: "Lone"
+date: "2023-03-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(reshape)
+
+species <- read.csv("~/Desktop/Master/Analyses/species_table_n.csv", row.names = 1)
+
+
+#decontaminate, remove Zoarces_viviparus
+
+species <- read.csv("~/Desktop/Master/Analyses/species_table.csv", row.names = 1)
+
+
+#decontaminate, remove Zoarces_viviparus
+
+species = subset(species, select = -c(no.identification) )
+
+#Remove all samples with less than 400 total reads
+rowSums(species)
+species_cleaned = species[which(rowSums(species)>400),]
+# remove the positive control
+species_cleaned = species_cleaned[-80,]
+
+
+#clean up faults n the blastingprocess
+
+colnames(species_cleaned)[which(names(species_cleaned) == "Chelidonichthys_cuculus")] <- "Eutrigla_gurnardus"
+colnames(species_cleaned)[which(names(species_cleaned) == "Thunnus_alalunga")] <- "Thunnus_thynnus"
+colnames(species_cleaned)[which(names(species_cleaned) == "Gobiusculus_flavescens")] <- "Pomatoschistus_flavescens"
+
+#change the name
+rownames(species_cleaned) <- gsub("_L001_R1_001.fastq.gz", "", rownames(species_cleaned))
+rownames(species_cleaned) <- gsub("\\_.*", "", rownames(species_cleaned))
+
+#make species into proportion
+prop_species_clean = t(prop.table(as.matrix(species_cleaned), margin = 1)*100)
+prop_species_clean = prop_species_clean[order(rowSums(-prop_species_clean)),]
+#only the 15 most species
+prop_species_clean = prop_species_clean[1:15,]
+melted_prop_species_clean = melt(prop_species_clean)
+
+
+
+melted_prop_species_clean = dplyr::arrange(melted_prop_species_clean, X1, desc(value))
+melted_prop_species_clean$X2 = factor(melted_prop_species_clean$X2, levels = unique(melted_prop_species_clean$X2))
+
+#make color palett
+color_palette_fish = c("#114477", "#4477AA", "#77AADD", "#117755",
+                          "#44AA88", "#99CCBB", "#777711", "#AAAA44",
+                          "#DDDD77", "#771111", "#AA4444", "#DD7777",
+                          "#771144", "#AA4477", "#DD77AA")
+
+fish_colors = setNames(color_palette_fish, levels(melted_prop_species_clean$X1))
+
+
+  png("fish_species.png", height = 80, width = 70)
+ggplot(melted_prop_species_clean, aes(x = X2, y = value, fill = X1), cex=4)+
+  geom_bar(stat = "identity", position = "stack", alpha = .5, width = 1, size = 10)+
+  guides(fill = guide_legend(title = "Fish species"))+
+  coord_flip() +
+  xlab("Sampling points")+
+  ylab("Proportion of reads [%]")+
+  scale_fill_manual(values = fish_colors)+
+  scale_x_discrete(limits = rev(levels(melted_prop_species_clean$X2))) 
+
+dev.off()
+
+
+
+```
+
+
+
+
+```{r}
+
+library("vegan")
+species_presence <- as.matrix((species_cleaned>0)+0)
+nestednodf(species_presence, order = F)
+```
+
+```{r}
+#get mata data
+data <- as.data.frame(read.csv("~/Desktop/Master/Analyses/Data_master_project.csv"))
+rownames(data) = data$ID
+
+
+#remove data from samples removed in the cleaning process
+keep_samples = rownames(species_cleaned)
+data_cleaned = data[rownames(data) %in% keep_samples,]
+data_cleaned = data_cleaned[order(rownames(data_cleaned)),]
+species_cleaned = species_cleaned[order(rownames(species_cleaned)),]
+
+
+
+library(geosphere)
+
+#create a new object including just longitude and latitude
+df.area <- subset(data_cleaned, select = c(Lat, Lon))
+#find distance between points
+area_dist <- distm(df.area)
+
+#find the difference in specie diversity at the different points
+veg.dist <- vegdist(species_cleaned, method = "jaccard")
+
+vgg <- as.matrix(veg.dist)
+agg <- as.matrix(area_dist)
+m1 <- lm(vgg~agg)
+diag(agg) <- NA
+diag(vgg) <- NA
+
+#run a mantel test between distance and specie diversity
+mantel_results <- mantel(agg, vgg, permutations = 1000)
+mantel_results
+summary(mantel_results)
+
+
+
+plot(as.matrix(veg.dist), as.matrix(area_dist), xlab ="Species diversity", ylab = "Spacial differance")
+abline(m1)
+
+# Convert the distance matrices to long format
+veg_dist_long <- melt(as.matrix(vgg))
+area_dist_long <- melt(as.matrix(agg))
+
+# Combine the long-form distance matrices into a single data frame
+dist_df <- cbind(veg_dist_long, area_dist_long$value)
+colnames(dist_df) <- c("variable", "species", "veg.dist", "area.dist")
+
+theme1 <-   theme_classic() + 
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.background = element_rect(
+      fill = "white", 
+      linewidth = 2, 
+      colour = "white"
+    ),
+    legend.justification = c(0, 1),
+    legend.position = "right",
+    axis.ticks = element_line(colour = "black", linewidth = 0.1)
+  )
+
+# Calculate the linear regression
+#fit <- lm( agg~vgg , data = dist_df)
+# Extract the R-squared value
+r_squared <- mantel_results$statistic
+p_val <- mantel_results$signif
+
+# Create the plot
+png("Speciesdistance.png", height = 400, width = 700)
+ggplot(dist_df, aes(y = veg.dist, x = area.dist)) +
+  geom_point() +
+#  geom_smooth(method = "lm", color = "red", se = T) +
+  labs(y = "Species diversity", x = "Spatial difference",
+       title = paste("P-value: ", formatC(p_val,digits = 2, format = "f"))) +
+  xlim(min(0, na.rm = TRUE), max(130000, na.rm = TRUE)) +
+    theme_classic()+ 
+    theme(axis.text = element_text(size = 14),
+        axis.title.x = element_text(size = 16), # set size of x axis label
+        axis.title.y = element_text(size = 16),
+        legend.text = element_text(size = 14), # set size of legend text
+        legend.title = element_text(size = 16))
+dev.off()
+  
+
+
+
+
+```
+
+```{r}
+library(vegan)
+library(ggplot2)
+
+
+#get data on environmental perimeters
+env.data <- as.data.frame(read.csv("~/Desktop/Master/Analyses/environmental_data.csv", sep = ";"))
+env.data <- filter(env.data,`ID`!="NA")
+rownames(env.data) = env.data$ID
+
+env.data <- env.data[1:7]
+
+# remove data corresponding to missing localities
+env.data_cleaned = env.data[rownames(env.data) %in% keep_samples,]
+env.data_cleaned = env.data_cleaned[order(rownames(env.data_cleaned)),]
+groups <- env.data_cleaned$group
+env.data_cleaned <- data.frame(lapply(env.data_cleaned[1:6], as.numeric))
+env.data_cleaned <- cbind(env.data_cleaned, groups)
+
+
+## include absorbance data
+
+#create a list of the files from your target directory
+file_list <- list.files("~/Desktop/Master/Lone")
+
+#add all files into dataset
+df <- NULL
+for (i in 1:length(file_list)) {
+  di <- read.table(paste("~/Desktop/Master/Lone", file_list[i], sep="/"), sep = ",", skip=2)
+  
+  df <- rbind(df, data.frame(id=gsub(".txt", "", file_list[i]), wl=di$V1, abs=di$V2))
+}
+
+#add id
+df$id <- as.numeric(substr(df$id, 7,9))
+df <- subset(df, complete.cases(df)) # Remove NAs
+
+library(ggplot2)
+
+#plot absorbance
+ggplot(df, aes(x=wl, y=abs, group=id, colour = id)) +
+  geom_line()
+
+df.400 <- subset(df, wl == 400)
+
+df.700 <- subset(df, wl == 700)
+
+hist(df.400$abs-df.700$abs)
+
+```
+
+```{r}
+#filtering out data to lost localities
+keep_samples <- as.numeric(keep_samples)
+
+rownames(df.400) = df.400$id
+df.400_cleaned = df.400[rownames(df.400) %in% keep_samples,]
+df.400_cleaned = df.400_cleaned[order(rownames(df.400_cleaned)),]
+
+rownames(df.700) = df.700$id
+df.700_cleaned = df.700[rownames(df.700) %in% keep_samples,]
+df.700_cleaned = df.700_cleaned[order(rownames(df.700_cleaned)),]
+
+#make data point for all missing locations for 400 and 700nm wavelengths
+y <- env.data_cleaned$ID[!(env.data_cleaned$ID %in% df.400_cleaned$id)]
+
+for (i in 1:length(y)){
+  df.400_cleaned[nrow(df.400_cleaned) + 1,] <- c(y[i], 400, NA)
+
+}
+
+for (i in 1:length(y)){
+  df.700_cleaned[nrow(df.700_cleaned) + 1,] <- c(y[i], 700, NA)
+
+}
+
+#install.packages("mice")
+library(mice)
+library(VIM)
+#plot showing how much data must be implemneted?
+aggr_plot <- aggr(df.400_cleaned, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(df.400_cleaned), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+#impliment data for 400 and 700 wavelengths
+tempData <- mice(df.400_cleaned,m=5,maxit=50,meth='pmm',seed=500)
+new.400 <- complete(tempData, 1)
+
+tempData <- mice(df.700_cleaned,m=5,maxit=50,meth='pmm',seed=500)
+new.700 <- complete(tempData, 1)
+
+#remove background noice from 400 wavelength dataset
+Absorbance= new.400$abs - new.700$abs
+# add to environmental parameter data
+env.data_cleaned <- cbind(env.data_cleaned, Absorbance)
+
+##RDA analysis
+
+explanatory <- subset(env.data_cleaned, select = c(TN, TOC, kond., salinity, Tot.P, Absorbance))
+response <- species_cleaned
+
+  spp=decostand(response,method = "hellinger")#Convert response variables
+  fcc=log10(explanatory)#Converting explanatory variables, but not pH (already log)
+  uu=rda(spp~.,fcc)#RDA Analysis
+ii=summary(uu)  #View analysis results
+
+spe.rda.signif<- rda(formula = spp ~ fcc$TN, data = fcc)
+RsquareAdj(spe.rda.signif)
+
+anova.cca(uu, step = 1000)
+anova.cca(uu, step = 1000, by = "term")
+anova.cca(uu, step = 1000, by = "axis")
+
+perc <- round(100*(summary(uu)$cont$importance[2, 1:2]), 2)
+
+ordiplot(uu, scaling = 2, type = "text",  xlab = paste0("RDA1 (", perc[1], "%)"), ylab = paste0("RDA2 (", perc[2], "%)") )
+```
+
+```{r}
+##zoomed in RDA
+sc_si <- scores(uu, display="sites", choices=c(1,2), scaling=2)
+sc_sp <- scores(uu, display="species", choices=c(1,2), scaling=2)
+sc_bp <- scores(uu, display="bp", choices=c(1, 2), scaling=2)
+
+
+plot(uu,
+     scaling = 2, # set scaling type 
+     type = "none", # this excludes the plotting of any points from the results
+    
+     # set axis limits
+     xlim = c(-0.25,0.35), 
+     ylim = c(-0.1,0.1),
+     # label the plot (title, and axes)
+     #main = "RDA",
+     xlab = paste0("RDA1 (", perc[1], "%)"), 
+     ylab = paste0("RDA2 (", perc[2], "%)") 
+)
+
+# add text labels for species abbreviations
+text(sc_sp, # adjust text coordinates to avoid overlap with points 
+     labels = rownames(sc_sp), 
+     col = "red", 
+     font = 0.3, # bold
+     cex = 0.6)
+# add arrows for effects of the expanatory variables
+arrows(0,0, # start them from (0,0)
+       sc_bp[,1], sc_bp[,2], # end them at the score value
+       lwd = 0.5)
+
+```
+
+```{r}
+datato <- cbind(env.data_cleaned, data_cleaned)
+datato <- datato[, !duplicated(colnames(datato))]
+m2 <- lm( TN ~Lat, data = datato)
+m3<- lm(TOC ~Lat , data = datato)
+m4 <-lm(Tot.P ~Lat , data = datato)
+m5<- lm(  salinity~Lat, data = datato)
+m6<-lm(  kond.~Lat, data = datato)
+m7<- lm(  Absorbance~Lat, data = datato)
+```
+
+
+```{r}
+library(gridExtra)
+
+
+
+p1 <- ggplot(datato, aes(y = TN, x = Lat)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  labs(x = "Total Nitrogen", y = "Latitude",
+       title = paste("Adj R-squared: ", round(summary(m2)$adj.r.squared, 3), "P-value: ", formatC(summary(m2)$coef[2,4],digits = 2, format = "f"))) +
+  theme1+theme(plot.title = element_text(size = 10))
+
+p2 <- ggplot(datato, aes(y = TOC, x = Lat)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  labs(x = "Total diluted carbon", y = "Latitude",
+       title = paste("Adj R-squared: ", round(summary(m3)$adj.r.squared, 3), "P-value: ", formatC(summary(m3)$coef[2,4],digits = 2, format = "f"))) +
+  theme1+theme(plot.title = element_text(size = 10))
+
+p3 <- ggplot(datato, aes(y = Tot.P, x = Lat)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  labs(x = "Total phosphor", y = "Latitude",
+       title = paste("Adj R-squared: ", round(summary(m4)$adj.r.squared, 3), "P-value: ", formatC(summary(m4)$coef[2,4],digits = 2, format = "f"))) +
+  theme1+theme(plot.title = element_text(size = 10))
+
+p4 <- ggplot(datato, aes(y = salinity, x = Lat)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  labs(x = "Salinity", y = "Latitude",
+       title = paste("Adj R-squared: ", round(summary(m5)$adj.r.squared, 3), "P-value: ", formatC(summary(m5)$coef[2,4],digits = 2, format = "f"))) +
+  theme1+theme(plot.title = element_text(size = 10))
+p5<- ggplot(datato, aes(y = kond., x = Lat)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  labs(x = "Cunductivity", y = "Latitude",
+       title = paste("Adj R-squared: ", round(summary(m6)$adj.r.squared, 3), "P-value: ", formatC(summary(m6)$coef[2,4],digits = 2, format = "f"))) +
+  theme1+theme(plot.title = element_text(size = 10))
+p6<- ggplot(datato, aes(y = Absorbance, x = Lat)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  labs(y = "Absorbance", x = "Latitude",
+       title = paste("Adj R-squared: ", round(summary(m7)$adj.r.squared, 3), "P-value: ", formatC(summary(m7)$coef[2,4],digits = 2, format = "f"))) +
+  theme1+theme(plot.title = element_text(size = 10))
+
+png("envplot.png")
+grid.arrange(p1,p2,p3,p4,p5,p6)
+dev.off()
+```
+
+```{r}
+##??
+adonis(data.frame(species_presence) ~ groups, data = data.frame(env.data_cleaned))
+m8<- lm(TN ~ salinity, data = datato)
+
+ggplot(datato, aes(y = TN, x = salinity)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  labs(y = "TN", x = "Salinity",
+       title = paste("Adj R-squared: ", round(summary(m8)$adj.r.squared, 3), "P-value: ", formatC(summary(m8)$coef[2,4],digits = 2, format = "f"), scientific = TRUE)) +
+  theme1+theme(plot.title = element_text(size = 10)) +
+  theme_classic()+ 
+    theme(axis.text = element_text(size = 14),
+        axis.title.x = element_text(size = 16), # set size of x axis label
+        axis.title.y = element_text(size = 16),
+        legend.text = element_text(size = 14), # set size of legend text
+        legend.title = element_text(size = 16))
+
+```
+
+
+
+```{r}
+NMDS <- metaMDS(species_presence)
+stressplot(NMDS)
+```
+
+
+```{r}
+species_presence <- as.matrix((species_cleaned>0)+0)
+# Create NMDS object
+fish_mds = metaMDS(species_presence, distance = "jaccard", autotransform = FALSE, try = 200)
+
+## subset NAs
+
+scores_mds = scores(fish_mds)
+fish_mds$stress # 0.254
+
+score_species <- scores_mds$species
+sites <- scores_mds$sites
+
+
+#help
+#align først, pass på at begge har samme rownames
+res = as.data.frame(merge(sites,
+                          env.data_cleaned,
+                          by.x = "row.names",
+                          by.y = "ID"))
+
+
+ggplot(res, aes(NMDS1, NMDS2)) +
+       geom_point(aes(colour=groups, shape = groups)) +
+       theme_bw(14) +
+       xlab("Dimension 1") +
+       ylab("Dimension 2")
+
+latitude = data_cleaned[, "Lat"]
+omrade <- data_cleaned[, "Område"]
+png("NMDS.png", height = 400, width = 700)
+ggplot(res, aes(NMDS1, NMDS2)) +
+       geom_point(aes(colour=latitude, shape = groups)) +
+       theme_bw(14) +
+       xlab("Dimension 1") +
+       ylab("Dimension 2") +
+       scale_colour_gradient(low = "#D1BBD7", high="#771111") +
+    labs(colour = "Latitude", 
+       shape = "Nitrogen level", 
+       subtitle = paste0("Stress value: ", round(fish_mds$stress, 3)))+
+  theme_classic()+ 
+    theme(axis.text = element_text(size = 14),
+        axis.title.x = element_text(size = 16), # set size of x axis label
+        axis.title.y = element_text(size = 16),
+        legend.text = element_text(size = 14), # set size of legend text
+        legend.title = element_text(size = 16),
+        plot.subtitle = element_text(size = 12))
+dev.off()
+
+```
+
+
+```{r}
+# geographic distance
+geo_data = data.frame(lon  = data_cleaned[, "Lon"], lat  = data_cleaned[, "Lat"])
+rownames(geo_data) = rownames(data_cleaned)
+geo_dist = distm(geo_data)
+
+# community distance
+species_dist <- vegdist(species_presence, method = "jaccard")
+
+# environmental distance
+
+env_table = as.matrix(scale(env.data_cleaned [,2:6], scale=T, center=T))
+env_dist = vegdist(env_table, method="euclidean")
+
+mantel.partial(species_dist, env_dist, geo_dist, method="pearson", permutations=999)
+mantel.partial(species_dist, geo_dist, env_dist, method="pearson", permutations=999)
+
+## Analysis of individual fish species
+
+```
+
+
+```{r}
+specie.number<- rowSums(species_presence)
+specie.number<- as.data.frame(specie.number)
+blobb <- cbind(specie.number, data_cleaned)
+
+
+# Fit the linear model
+m1 <- lm(specie.number~Lat, data = blobb)
+
+
+
+# Create the plot
+png("speicelat.png", height = 400, width = 700)
+ggplot(blobb, aes(y = specie.number, x = Lat)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x, se = T, color = "red") +
+  labs(y = "Number of species", x = "Latitude",
+       title = paste("Adj R-squared: ", round(summary(m1)$adj.r.squared, 3), "P-value: ", formatC(summary(m1)$coef[2,4],digits = 2, format = "f"))) +
+    theme_classic()+ 
+    theme(axis.text = element_text(size = 14),
+        axis.title.x = element_text(size = 16), # set size of x axis label
+        axis.title.y = element_text(size = 16),
+        legend.text = element_text(size = 14), # set size of legend text
+        legend.title = element_text(size = 16),
+        plot.subtitle = element_text(size = 12))
+dev.off()
+
+     
+```
+
+```{r}
+png("spnumber.png")
+hist(specie.number$specie.number, xlab="Number of species present", main ="")
+dev.off()
+```
+
+```{r}
+# spe er species data
+
+spe.hel<- decostand(species_cleaned,method = "hellinger")
+perm<- adonis2(spe.hel ~ ., data = env.data_cleaned)
+perm
+```
+
+```{r}
+dune.dist <- vegdist(species_cleaned, method="jaccard")
+dispersion <- betadisper(dune.dist, group=env.data_cleaned$TN)
+permutest(dispersion)
+plot(dispersion, hull=FALSE, ellipse=TRUE) ##sd ellipse
+```
+
+
+```{r}
+library(sp)
+library(maps)
+library(mapdata)
+
+# An arbitrary point in Inner Oslofjord
+
+# Extract coastline from map and convert to data.frame
+
+of <- map("worldHires", xlim=c(10.1, 11.4), ylim=c(58.8, 60.02), plot=FALSE)
+
+of.xy <- data.frame(Lon=of$x, Lat=of$y)
+
+
+# Need to crop the polygon to just Oslofjord
+
+of.xy <- subset(of.xy, Lat > 58.8)
+of.sp <- SpatialPointsDataFrame(coords=of.xy, data=of.xy)
+
+dd.dist <- c()
+dist.dd <- data_frame()
+dd <- subset(data_cleaned, select = c( Lon, Lat))
+for (i in 1:length(dd$Lon)){
+dd.sp <- SpatialPointsDataFrame(coords=dd[i,], data=dd[i,])
+
+# Convert to sp object and find distance to dd
+
+dd.dist <- min(spDistsN1(of.sp, dd.sp, longlat=TRUE)) # 0.762 km from land
+dd.dist <- as.data.frame(dd.dist)
+dist.dd <- rbind(dist.dd,dd.dist)
+}
+
+dist.dd$id <- data_cleaned$ID
+dist.dd$TN <- env.data_cleaned$TN
+
+mm <- lm(dist.dd$TN~dist.dd$dd.dist)
+summary(mm)
+plot(dist.dd$dd.dist, dist.dd$TN)
+  
+
+
+```
+
+
+
+ˆ
+```{r}
+library(readxl)
+info <- read_excel("~/Desktop/Master/Analyses/Data_master_project.xlsx", sheet = 5)
+
+hist(info$Antall, xlab = "Number of samples", main= "", breaks = 4)
+
+```
