@@ -35,6 +35,9 @@ species_table_n.csv - species tables from the eDNA analysis
 species_table.csv - species tables from the eDNA analysis
 strandnot_2010_2022.csv - data from the beach seine survey
 
+### Scripts
+The Annotation_to_phyloseq.sh scripts streamlines the prosess from dada2 output to a lowest common ancestor based phyloseq object / species table.
+
 ### seq_data_processing
 Here you can find the code to obtain the Amplicon sequence variants (ASV) tables from the raw sequencing data. You can also find code for the taxonomic analyses using an in-house fish database (ScandiFish) and LCA analysis.
 
