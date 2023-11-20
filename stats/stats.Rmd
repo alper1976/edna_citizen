@@ -13,11 +13,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(tidyverse)
-library(reshape)
 library(ggplot2)
 library(vegan)
 library(ggmap)
 library(sp)
+library(reshape2)
+library(VennDiagram)
+library("ggvenn")
 
 
 
@@ -32,6 +34,15 @@ figs_dir = file.path("/Users/alexaei/Documents/projects/master_thesis_projects/L
 data_dir = file.path("/Users/alexaei/repos/edna_citizen/data")
 
 species <- read.csv(file.path(data_dir, "species_table_lca_n.csv"), row.names = 1)
+
+# remove genus entries
+
+remove_columns_without_underscore <- function(data) {
+  cols_to_keep <- grepl("_", names(data))
+  return(data[, cols_to_keep, drop = FALSE])
+}
+
+species <- remove_columns_without_underscore(species)
 
 #change the name
 rownames(species) <- gsub("_L001_R1_001.fastq.gz", "", rownames(species))
@@ -101,11 +112,6 @@ dev.off()
 
 ```
 
-```{r}
-
-
-```
-
 
 ```{r}
 
@@ -125,12 +131,13 @@ env.data_cleaned <- data.frame(lapply(env.data_cleaned[1:6], as.numeric))
 env.data_cleaned <- cbind(env.data_cleaned, groups)
 
 
-cairo_ps(file.path(figs_dir, "ori_map.eps"), width=80/25.4, height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
- ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-   geom_text(data = data, aes(x = Lon, y = Lat, label = ID), color = "red", size = 5) +
-# geom_point(data=data, aes(x=Lon, y=Lat), color="red")+
-  labs(x = "Longitude", y = "Latitude")
-dev.off()
+# cairo_ps(file.path(figs_dir, "ori_map.eps"), width=80/25.4, height=160/25.4, 
+#          pointsize = 4, bg = FALSE, fallback_resolution = 300)
+#  ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#    geom_text(data = data, aes(x = Lon, y = Lat, label = ID), color = "red", size = 5) +
+# # geom_point(data=data, aes(x=Lon, y=Lat), color="red")+
+#   labs(x = "Longitude", y = "Latitude")
+# dev.off()
 
 df2 <- merge(x=env.data,y=data, by="ID", all.x=TRUE) %>%
   mutate(TN = as.numeric(TN))
@@ -144,9 +151,9 @@ rbPal <- colorRampPalette(c('red','blue'))
 # based on the y values
 df2$Col <- rbPal(10)[as.numeric(cut(df2$TN,breaks = 10))]
 
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df2, aes(x=Lon, y=Lat), colour=df2$Col)+
-  labs(x = "Longitude", y = "Latitude")
+# ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#   geom_point(data=df2, aes(x=Lon, y=Lat), colour=df2$Col)+
+#   labs(x = "Longitude", y = "Latitude")
 
 
 
@@ -154,14 +161,6 @@ ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
 Figure x. A map of the Oslo fjord showing the sampling points along the fjord and the nitrogen levels observed there grouped high to low, where high is … and low is represented by the color …. 
 
 
-
-
-
-euclidean distance
-
-how much is due to dispersal of dna 
-
-add numbers 1 or 0 for precense in map
 ```{r}
 historic.data <-  read.csv(file.path(data_dir, "historic.data.csv"), sep = ";")
 
@@ -173,18 +172,15 @@ colnames(historic.data) <- c("institution", "species", "Lat", "Lon", "date")
 
 historic.data <- historic.data[grepl("_", historic.data$species), ]
 
-cairo_ps(file.path(figs_dir, "hist_map.eps"), width=80/25.4, height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=historic.data, aes(x=longitude, y=latitude), color="red")+
-  labs(x = "Longitude", y = "Latitude")
-dev.off()
+# cairo_ps(file.path(figs_dir, "hist_map.eps"), width=80/25.4, 
+#          height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+# ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#   geom_point(data=historic.data, aes(x=longitude, y=latitude), color="red")+
+#   labs(x = "Longitude", y = "Latitude")
+# dev.off()
 ```
 
-
-
-barplott med art mot area?
-
-
+## Species barplot
 
 
 ```{r}
@@ -383,17 +379,20 @@ df_lone_summary$type <- "eDNA method"
 df_both_summary <- rbind(df_historic_summary,df_lone_summary)
 
 
-png("species_detected.png", height = 1000, width = 700)
+cairo_ps(file.path(figs_dir, "Fig2_fish_species.eps"), width=80/25.4, 
+         height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
 # Here's the very basic plot but you can make it prettier i.e. select only species of interest, change color scheme, perhaps add the percentage number value on the corresponding box etc.
 ggplot(df_both_summary, aes(type, species, fill= n)) + 
-  geom_tile()+
+  geom_tile(alpha = 0.7) +
+  labs(fill = "") +
   theme_classic() + 
-    theme(axis.text = element_text(size = 14),
-        axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),
-        legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16))
-# I think it would be neat if you can turn the values into relative abundance. So basically instead of showing that cod was present in 5 sampling sites, you show that e.g. cod was present in 8% of the sampling sites.
+    theme(axis.text.y = element_text(size = 6),
+          axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
+          axis.title.x = element_text(size = 11), # set size of x axis label
+          axis.title.y = element_text(size = 11),
+          legend.text = element_text(size = 9), # set size of legend text
+          legend.title = element_text(size = 11))
+# I thin. k it would be neat if you can turn the values into relative abundance. So basically instead of showing that cod was present in 5 sampling sites, you show that e.g. cod was present in 8% of the sampling sites.
 
 dev.off()
 
@@ -401,13 +400,13 @@ lone_summary <- subset(df_lone_summary, select = c(species, type))
 historic_summary <- subset(df_historic_summary, select = c(species, type))
 
 
-match_my <- match_df(historic_summary, lone_summary, on= "species")
-match_his <- match_df(out_of_reach, lone_summary, on= "species")
+match_my <- plyr::match_df(historic_summary, lone_summary, on= "species")
+match_his <- plyr::match_df(out_of_reach, lone_summary, on= "species")
 cc_species <- as.data.frame(unique(cc$species))
 colnames(cc_species) <- "species"
 hal_species2 <- as.data.frame(unique(hal$species))
 colnames(hal_species2) <- "species"
-mach <- match_df(cc_species,hal_species2 , on ="species")
+mach <- plyr::match_df(cc_species,hal_species2 , on ="species")
 
 no_species <- rbind(match_my,historic_summary)
 
@@ -417,16 +416,15 @@ no_species <- subset(no_species,Freq==1)
 no_species <- as.data.frame(no_species[,-2])
 colnames(no_species) <- "species"
 
-makka <- match_df(no_species, historic_summary)
+makka <- plyr::match_df(no_species, historic_summary)
 
 ```
 
+## Detailed analyses 
 
+Here we check which species are outside the coordinates. Particularly we are interested in species that are found in the center of the fjord - non littoral.  
 
-sjekk hvilke arter som ligger utenom mine koordinater. Er det noen arter som er mer sannsynelig å finne midt i fjorden?
-
-
-fins det noken sekvenser som er fisk men ikkje får assignment - asv, lowest common ancestor
+We also look into individual species and rare species, as well as warm water species.
 
 
 ```{r}
@@ -444,7 +442,7 @@ df_historic <- unique(df_historic)
 
 df_both_map <- rbind(df_lone,df_historic)
 
-#	Let's use Taurulus_bubalis as an example species. You can repeat this same code for all the species that you are interested in by just assigning a different species below:
+#	Let's use Gadus_morhua as an example species. You can repeat this same code for all the species that you are interested in by just assigning a different species below:
 
 genus_species <- "Gadus_morhua"
 
@@ -506,16 +504,17 @@ df_genus_species <- merge(df_genus_species, coordinates, by = "out")
 
 set_shapes <- setNames(c(18, 15, 17, 16), levels(unique(df_genus_species$presence)))
 # Now you can just add the coordinates for each sampling site and make your map figure. In order to get the different symbols to represent the different presence status, just add "presence" column as a grouping variable.
-png("cod-map.png", height = 500, width = 400)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df_genus_species, aes(x=Lon, y=Lat, color = presence, shape=presence)) +
-  scale_shape_manual(values = set_shapes) +
-  labs(x = "Longitude", y = "Latitude")+
-  theme(axis.text = element_text(size = 14),
-        axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16))
-dev.off()
+# png("cod-map.png", height = 500, width = 400)
+# ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#   geom_point(data=df_genus_species, aes(x=Lon, y=Lat, color = presence, shape=presence)) +
+#   scale_shape_manual(values = set_shapes) +
+#   labs(x = "Longitude", y = "Latitude")+
+#   theme(axis.text = element_text(size = 14),
+#         axis.title.x = element_text(size = 16), # set size of x axis label
+#         axis.title.y = element_text(size = 16),
+#         legend.text = element_text(size = 14), # set size of legend text
+#         legend.title = element_text(size = 16))
+# dev.off()
 ```
 ```{r}
 genus_species <- "Ctenolabrus_rupestris"
@@ -549,9 +548,6 @@ sites_empty <- rbind(sites_species,all_sites)
   #mutate(out2 = ifelse(length(out)>1,1,0))
 
 sites_empty <- as.data.frame(table(sites_empty))
-
-
-
 sites_empty <- subset(sites_empty,Freq==1)
 sites_empty$species <- genus_species
 sites_empty$type <- NA
@@ -560,32 +556,28 @@ sites_empty$presence <-"Absent" # Here you finally assign "absent" value to thos
 sites_empty <- sites_empty[,-2]
 
 #Here you make the final dataframe that you can use in your maps.
-
 df_genus_species <- rbind(df_genus_species,sites_empty)
-
 df_genus_species <- df_genus_species[,c(1,2,5)]
-
 df_genus_species <- df_genus_species[!duplicated(df_genus_species), ]
 
 #rownames(df_genus_species) <- as.numeric(df_genus_species$out)
-
 coordinates <- subset(data_cleaned, select = c(Lat,Lon))
 coordinates$out <- 1:79
-
 
 df_genus_species <- merge(df_genus_species, coordinates, by = "out")
 
 # Now you can just add the coordinates for each sampling site and make your map figure. In order to get the different symbols to represent the different presence status, just add "presence" column as a grouping variable.
-png("bergnebb-map.png", height = 500, width = 400)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df_genus_species, aes(x=Lon, y=Lat, color = presence, shape=presence)) +
-  labs(x = "Longitude", y = "Latitude")+
-  scale_shape_manual(values = set_shapes) +
-  theme(axis.text = element_text(size = 14),
-        axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16))
-dev.off()
+# png("bergnebb-map.png", height = 500, width = 400)
+# ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#   geom_point(data=df_genus_species, aes(x=Lon, y=Lat, color = presence, shape=presence)) +
+#   labs(x = "Longitude", y = "Latitude")+
+#   scale_shape_manual(values = set_shapes) +
+#   theme(axis.text = element_text(size = 14),
+#         axis.title.x = element_text(size = 16), # set size of x axis label
+#         axis.title.y = element_text(size = 16),
+#         legend.text = element_text(size = 14), # set size of legend text
+#         legend.title = element_text(size = 16))
+# dev.off()
 ```
 ```{r}
 
@@ -594,16 +586,17 @@ df2 <- subset(df_both_map, species %in% c("Oncorhynchus_gorbuscha", "Cyprinus_ca
 df2$species <- factor(df2$species)
 
 df3 <- merge(df2, coordinates)
-png("invasive-map.png", height = 400, width = 400)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=type)) +
-  labs(x = "Longitude", y = "Latitude")+
-  scale_shape_manual(values = c(15, 16)) +
-  theme(axis.text = element_text(size = 14),
-        axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16))
-dev.off()
+# png("invasive-map.png", height = 400, width = 400)
+# ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#   geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=type)) +
+#   labs(x = "Longitude", y = "Latitude")+
+#   scale_shape_manual(values = c(15, 16)) +
+#   theme(axis.text = element_text(size = 14),
+#         axis.title.x = element_text(size = 16), # set size of x axis label
+#         axis.title.y = element_text(size = 16),
+#         legend.text = element_text(size = 14), # set size of legend text
+#         legend.title = element_text(size = 16))
+# dev.off()
 
 df2 <- subset(df_both_map, species %in% c("Engraulis_encrasicolus", "Scomber_scombrus", "Entelurus_aequoreus", "Trisopterus_minutus", "Sardina_pilchardus"))
 df2$species <- factor(df2$species)
@@ -616,7 +609,8 @@ ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
   scale_shape_manual(values = c(15, 16)) +
   theme(axis.text = element_text(size = 14),
         axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),legend.text = element_text(size = 14), # set size of legend text
+        axis.title.y = element_text(size = 16),
+        legend.text = element_text(size = 14), # set size of legend text
         legend.title = element_text(size = 16))
 dev.off()
 ```
@@ -638,16 +632,17 @@ df2 <- subset(df_both_map, species %in% c("Buglossidium_luteum", "Ciliata_septen
 df2$species <- factor(df2$species)
 
 df3 <- merge(df2, coordinates)
-png("novel-map.png", height = 400, width = 400)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=species)) +
-  labs(x = "Longitude", y = "Latitude")+
-  scale_shape_manual(values = c(15, 16)) +
-  theme(axis.text = element_text(size = 14),
-        axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16))
-dev.off()
+# png("novel-map.png", height = 400, width = 400)
+# ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#   geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=species)) +
+#   labs(x = "Longitude", y = "Latitude")+
+#   scale_shape_manual(values = c(15, 16)) +
+#   theme(axis.text = element_text(size = 14),
+#         axis.title.x = element_text(size = 16), # set size of x axis label
+#         axis.title.y = element_text(size = 16),legend.text = element_text(size = 14), 
+## set size of legend text
+#         legend.title = element_text(size = 16))
+# dev.off()
 ```
 
 ```{r}
@@ -656,123 +651,52 @@ df2rare <- subset(df_both_map, species %in% c("Trisopterus_luscus", "Phrynorhomb
 df2rare$species <- factor(df2rare$species)
 
 df3 <- merge(df2rare, coordinates)
-png("rare-map.png", height = 500, width = 450)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=type)) +
-  labs(x = "Longitude", y = "Latitude")+
-  scale_shape_manual(values = c(15, 16)) +
-  theme(axis.text = element_text(size = 14),
-        axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16))
-dev.off()
+# png("rare-map.png", height = 500, width = 450)
+# ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#   geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=type)) +
+#   labs(x = "Longitude", y = "Latitude")+
+#   scale_shape_manual(values = c(15, 16)) +
+#   theme(axis.text = element_text(size = 14),
+#         axis.title.x = element_text(size = 16), # set size of x axis label
+#         axis.title.y = element_text(size = 16),
+#         legend.text = element_text(size = 14), # set size of legend text
+#         legend.title = element_text(size = 16))
+# dev.off()
 
 df2 <- subset(df_both_map, species %in% refound$species)
 df2$species <- factor(df2$species)
 
 df3 <- merge(df2, coordinates)
-png("refound-map.png", height = 400, width = 400)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df3, aes(x=Lon, y=Lat, color = species)) +
-  labs(x = "Longitude", y = "Latitude")+
-  scale_shape_manual(values = c(15, 16)) +
-  theme(axis.text = element_text(size = 14),
-        axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16))
-dev.off()
+# png("refound-map.png", height = 400, width = 400)
+# ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#   geom_point(data=df3, aes(x=Lon, y=Lat, color = species)) +
+#   labs(x = "Longitude", y = "Latitude")+
+#   scale_shape_manual(values = c(15, 16)) +
+#   theme(axis.text = element_text(size = 14),
+#         axis.title.x = element_text(size = 16), # set size of x axis label
+#         axis.title.y = element_text(size = 16),
+#         legend.text = element_text(size = 14), # set size of legend text
+#         legend.title = element_text(size = 16))
+# dev.off()
 
- df2 <- subset(df_both_map, species %in% c("Anguilla_anguilla"))
+df2 <- subset(df_both_map, species %in% c("Gymnocephalus_cernua", "Entelurus_aequoreus", "Abramis_brama", "Phrynorhombus_norvegicus"))
 df2$species <- factor(df2$species)
 
 df3 <- merge(df2, coordinates)
-#ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-# geom_point(data=df3, aes(x=Lon, y=Lat, color = type, shape=type)) +
-#  labs(x = "Longitude", y = "Latitude")
-```
-```{r}
+# ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#   geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=type)) +
+#   labs(x = "Longitude", y = "Latitude")
 
-
-
- df2 <- subset(df_both_map, species %in% c("Gymnocephalus_cernua", "Entelurus_aequoreus", "Abramis_brama", "Phrynorhombus_norvegicus"))
-df2$species <- factor(df2$species)
-
-df3 <- merge(df2, coordinates)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=type)) +
-  labs(x = "Longitude", y = "Latitude")
-
- df2 <- subset(df_both_map, species %in% bbee$species)
-df2$species <- factor(df2$species)
-
-df3 <- merge(df2, coordinates)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=type)) +
-  labs(x = "Longitude", y = "Latitude")
 ```
 
+## Comparisons of methods
+
+Fisher exact and chisq tests
 
 
 
-```{r}
 
-historic <- subset(historical30, select = c(Lon, Lat))
-colnames(historic) <- c("Lon", "Lat")
-historic_base <- rbind(base.df, historic)
-
-species30 <- unique(historical30$species)
-
-historic.mtx <- as.matrix(historic)
-
-
-hx <- lapply(1:nrow(historic), function(x){
-    spDistsN1(pts = base.mtx, pt = historic.mtx[x, ], longlat =T)}) %>%
-lapply(which.min) %>%
-unlist %>%
-bind_cols(historic, out = .)
-
-hy <- lapply(1:nrow(historic), function(x){
-    spDistsN1(pts = base.mtx, pt = historic.mtx[x, ], longlat =T)}) %>%
-lapply(min) %>%
-unlist %>%
-bind_cols(historic, distance = .)
-
-hw <- cbind(hx, hy)
-hw <- hw[, !duplicated(colnames(hw))]
-hw <- cbind(hw, historical30$species)
-hw <- filter(hw, distance<1)
-
-colnames(hw) <- c("Lon", "Lat", "out", "distance", "species")
-hc <- subset(hw, select = c(out, species))
-out <- hc$out
-
-hc <- gsub(" ", "_", hc$species)
-hc <- as.data.frame(cbind(hc,out))
-colnames(hc) <- c("species", "out")
-
-
-df_lone$type <- "lones_data"
-hc$type <- "historic"
-
-df_historic <- unique(hc)
-
-#hist(as.numeric(df_historic$out), breaks = 80)
-
-df_both_map_old <- rbind(df_lone,hc)
-
-
-df2 <- subset(df_both_map_old, species %in% refound$species)
-df2$species <- factor(df2$species)
-
-df3 <- merge(df2, coordinates)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=type)) +
-  labs(x = "Longitude", y = "Latitude")
-```
-kanskje eg må passe på at dei ikkje overlapper
-
-
-
+## The statistical analyses
 
 ```{r}
 
@@ -784,121 +708,8 @@ species_name <- c(c_species, o_species)
 species_name <- unique(species_name)
 
 
-his2017 <- subset(historical.2000, select = c("validScientificName", "longitude", "latitude"))
-his2017$validScientificName <- gsub(" ", "_", his2017$validScientificName)
-colnames(his2017) <- c("Species", "Lon", "Lat")
+his2017 <- subset(historical.2000, select = c("species", "Lon", "Lat"))
 
-
-
-
-
-library(reshape2)
-
-species_name <- colnames(species_cleaned)
-test3 = match_df(cc, original, on = "out")
-test4 = match_df(original, cc, on = "out")
-
-mx3 <- t(as.matrix(with(test3, table(species, out)))) > 0
-mx4 <- t(as.matrix(with(test4, table(species, out)))) > 0
-
-mx5 <- mx4[, colSums(mx4) > 0]
-
-combined = cbind(mx3, mx5)
-sn <- colnames(combined)
-
-for (i in 1:length(sn)){
-for (y in 1:length(sn)){
-  if((y-i) >0){g <- (y-i)}
-  else{}
-  if (i==y){
-  }
-  else{
-  ct <- chisq.test(combined[,i], combined[,g], simulate.p.value = T)
-  ft <- fisher.test(combined[,i], combined[,g], simulate.p.value = T)
-  if (ct$p.value <0.05) {
-    print(ct)
-    print(i)
-    print(y)
-  }
-  else{}
-  if (ft$p.value <0.05) {
-    print(ft)
-    print(i)
-    print(y)
-  }
-  else{}
-  }
-}
-}
-  
-
-
-library(Matrix)
-image(Matrix(mx))
-
-
-```
-
-
-
-
-
-
-
-```{r}
-i.p <- c()
-g.p <- c()
-ft.p <- c()
-for (i in 1:length(sn)){
-for (y in 1:length(sn)){
-  if((y-i) >0){g <- (y-i)}
-  else{}
-  if (i==y){
-  }
-  else{
-  ft <- fisher.test(combined[,i], combined[,g], simulate.p.value = T)
-  ft.p <- append(ft.p, ft$p.value)
-  ft.p <- as.data.frame(ft.p)
-  i.p <- append(i.p,i)
-
-  g.p <- append(g.p, g)
-
-  }
-}
-}
-
-
-fdr <- p.adjust(ft.p, method = "fdr")
-pval <- as.data.frame( ft.p)
-sort(fdr)
-
-for (f in 1:length(fdr)){
-  if (fdr[f] < 0.05){
-    fd <- append(fd, fdr[f])
-    print(fdr[f])
-    print(f)
-  }
-  else{}
-}
-
-for (y in 1:length(fd)) {
-for (i in 1:length(ft.p)){
-  if (ft.p[i] == fd[y]){
-    print(i)
-  }
-  else{}
-}
-}
-
-
-sort(p.adjust(ct.p, method = "fdr"))
-
-x
-
-
-```
-
-```{r}
 mx3 = cc
 mx4 = original
 sn <- unique(cc$species)
@@ -955,27 +766,30 @@ ggplot(both.test, aes(variable, species, fill = below_005)) +
                     labels = c("above 0.1", "below 0.1", "below 0.05"))
 
 
-png("fishertest.png", height = 700, width = 700)
-ggplot(both.test, aes(variable, species, fill = value)) +  geom_tile() + scale_fill_gradientn(colors = c("blue", "white", "yellow","orange", "red"), breaks = my_breaks, trans = "log", labels = c("0.01", "0.05", "0.001", "0.0001"))+
+cairo_ps(file.path(figs_dir, "Fig3_stats_test.eps"), width=90/25.4, 
+         height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+ggplot(both.test, aes(variable, species, fill = below_005)) +  
+  geom_tile(alpha = 0.5) + 
+  scale_fill_manual(values = c("dark blue", "blue", "light blue"), 
+                    labels = c("> 0.1", "< 0.1", "< 0.05")) +
   theme_classic() + 
-    theme(axis.text = element_text(size = 14),
-        axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),
-        legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16))
-
+    theme(axis.text.y = element_text(size = 8),
+          axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
+          axis.title.x = element_text(size = 11), # set size of x axis label
+          axis.title.y = element_text(size = 11),
+          legend.text = element_text(size = 9), # set size of legend text
+          legend.title = element_text(size = 11))
 dev.off()
 
 
 
 ```
 
+## Venn diagram
 
+Plotting species presence and overlap between inner and outer Oslofjord
 
 ```{r}
-
-library(ggplot2)
-library(VennDiagram)
 
 # Create a new variable that indicates whether the species is below or above a certain latitude
 lat_group <- ifelse(data_cleaned$Lat > 59.667800, "above", "below")
@@ -995,8 +809,9 @@ for (i in 1:length(melt_df$lat_group)){
   else{below <- melt_df$variable[i]}
 }
 
-
-
+# use list as input
+A <-list("Outer Oslo fjord" = melt_df[melt_df$lat_group == "below", "variable"],
+           "Inner Oslo fjord" = melt_df[melt_df$lat_group == "above", "variable"])
 
 above <- as.data.frame(A$`Inner Oslo fjord`)
 above <- unique(above)
@@ -1011,50 +826,62 @@ bee <- subset(bee,Freq==1)
 bee <- as.data.frame(bee)
 colnames(bee) <- c("species", "v1")
 
-library(plyr)
-
-abee <- match_df(above, bee, on = "species")
-bbee <- match_df(below, bee, on = "species")
+abee <- plyr::match_df(above, bee, on = "species")
+bbee <- plyr::match_df(below, bee, on = "species")
 
 spge <- rbind(abee, bbee)
 
-library("ggvenn")
-  
-# use list as input
-A <-list("Outer Oslo fjord" = melt_df[melt_df$lat_group == "below", "variable"],
-           "Inner Oslo fjord" = melt_df[melt_df$lat_group == "above", "variable"])
-  
 # create venn diagram and display all the sets
-png("venndiagram.png", height = 500, width = 650)
+cairo_ps(file.path(figs_dir, "Fig5a_venn.eps"), width=80/25.4, 
+         height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
 ggvenn(A) +
      theme(
-        legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16),
-        plot.subtitle = element_text(size = 12), 
-        text = element_text(size = 46)) # set the font size to 18
+        legend.text = element_text(size = 11), # set size of legend text
+        legend.title = element_text(size = 11),
+        plot.subtitle = element_text(size = 11), 
+        text = element_text(size = 11)) # set the font size to 18
 dev.off()
 ```
 
+## Regression analysis latitude versus species detection
+
+Plot regression between species observations and latitude (from outer to inner Oslofjord)
 
 ```{r}
-mysp <- colnames(species_cleaned)
 
-A <-list("species in the 30s" = species30,
-          "my species"= mysp)
-  
-# create venn diagram and display all the sets
-ggvenn(A)
+count_species <- function(row) {
+  sum(row > 0)
+}
 
+species_cleaned$NumSpecies <- apply(species_cleaned[, -1], 1, count_species)
 
-historical70 <- historic.data[time > as.Date("1970-1-1"), ]
-historical70 <- historical70[time < as.Date("1990-1-1"), ]
-species70 <- unique(historical70$species)
+species_cleaned$Lat = data_cleaned$Lat
 
-A <-list("species in the 70s" = species70,
-          "my species"= mysp)
-  
-# create venn diagram and display all the sets
-ggvenn(A)
+species_cleaned$lat_group = lat_group
+
+cairo_ps(file.path(figs_dir, "Fig5b_regression.eps"), width=80/25.4, 
+         height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+ggplot(species_cleaned, aes(x = Lat, y = NumSpecies)) +
+  geom_point() +  # Scatter plot
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +  # Regression line with confidence intervals
+  labs(x = "Latitude",
+       y = "observed species") +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 9),
+        axis.text.x = element_text(size = 9),
+        axis.title.x = element_text(size = 11), # set size of x axis label
+        axis.title.y = element_text(size = 11),
+        legend.text = element_text(size = 9), # set size of legend text
+        legend.title = element_text(size = 11))
+dev.off()
+
+```
+
+## Make prevalence histogram
+
+Here we plot the histogram of number of observed species per site.
+
+```{r}
 
 ```
 
