@@ -1,3 +1,4 @@
+#!/bin/bash
 
 module load BLAST+/2.13.0-gompi-2022a
 
@@ -24,20 +25,14 @@ echo " "
 echo "Finished with blast annotation"
 echo " "
 echo " "
+
 module purge
 
-module load R-bundle-Bioconductor/3.16-foss-2022b-R-4.2.2
-
-
+module load R-bundle-Bioconductor/3.16-foss-2022b-R-4.2.2 #load R
 
 Rscript $Script_path/Blast_annotation.R -i $RAWDIR -o $RESDIR -e $Error_correction_model # starts r script to create sequence table in dada2 and phyloseq compatible format.
 
-#works!
-
-
-
-
-wget -nc https://raw.githubusercontent.com/naturalis/galaxy-tool-lca/master/lca.py -P $Script_path #downloads lca.py if it do not exist
+wget -nc https://raw.githubusercontent.com/naturalis/galaxy-tool-lca/master/lca.py -P $Script_path #downloads lca.py if it do not present in directory
 
 rm $RESDIR/*lca_03_98_out.tabular # Removes table if existing LCA analysis exist.
 
