@@ -183,7 +183,7 @@ species_table_lca_n <- otu_table(phyloseq_summarize_taxa(am_physeq_clean_n, 'LCA
 #species_table_n[species_table_n < 11] = 0
 #species_table_n[species_table_n > 10] = 1
 
-write.csv(t(species_table_lca_n), "species_table_lca_n.csv"))
+write.csv(t(species_table_lca_n), "species_table_lca_n.csv")
 
 
 print("Use the" $phyloseq_name " for downstream")
