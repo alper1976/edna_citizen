@@ -19,8 +19,8 @@ library(ggmap)
 library(sp)
 library(reshape2)
 library(VennDiagram)
-library("ggvenn")
-
+library(ggvenn)
+library(xlsx)
 
 
 ```
@@ -59,7 +59,11 @@ species_cleaned = species[which(rowSums(species)>400),]
 species_cleaned = species_cleaned[-which(rownames(species_cleaned) == "P"),]
 rowSums(species_cleaned)
 
-#get mata data
+# remove species observations with less than 20 reads per sample
+species_cleaned = species_cleaned %>%
+          mutate_all(~ifelse(. < 20, 0, as.numeric(.)))
+
+#get meta data
 data <- as.data.frame(read.csv(file.path(data_dir, "Data_master_project.csv")))
 rownames(data) = data$ID
 
@@ -68,6 +72,7 @@ keep_samples = rownames(species_cleaned)
 data_cleaned = data[rownames(data) %in% keep_samples,]
 data_cleaned = data_cleaned[order(rownames(data_cleaned)),]
 species_cleaned = species_cleaned[order(rownames(species_cleaned)),]
+write.csv(species_cleaned, file.path(data_dir, "species_cleaned.csv"))
 
 #make species into proportion
 prop_species_clean = t(prop.table(as.matrix(species_cleaned), margin = 1)*100)
@@ -172,6 +177,12 @@ colnames(historic.data) <- c("institution", "species", "Lat", "Lon", "date")
 
 historic.data <- historic.data[grepl("_", historic.data$species), ]
 
+# fix inconsistent species names
+historic.data$species[historic.data$species == "Pomatoschistus_flavescens"] =
+  "Gobiusculus_flavescens"
+historic.data$species[historic.data$species == "Gymnocephalus_cernuus"] = 
+  "Gymnocephalus_cernua"
+
 # cairo_ps(file.path(figs_dir, "hist_map.eps"), width=80/25.4, 
 #          height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
 # ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
@@ -220,7 +231,6 @@ time <- as.Date(strptime(historic.data$date, "%d.%m.%Y %H:%M:%S"))
 sum(time > as.Date("2017-1-1"))
 historical.2000 <- historic.data[time > as.Date("2017-1-1"), ]
 
-
 #make 
 base.df <- subset(data_cleaned, select = c(Lon,Lat))
 target.df <- subset(historical.2000, select = c(Lon, Lat))
@@ -229,8 +239,6 @@ target_base <- rbind(base.df, target.df)
 
 base.mtx <- as.matrix(base.df)
 target.mtx <- as.matrix(target.df)
-
-
 
 cx <- lapply(1:nrow(target.df), function(x){
     spDistsN1(pts = base.mtx, pt = target.mtx[x, ], longlat =T)}) %>%
@@ -250,7 +258,6 @@ cw <- cbind(cx, cy)
 cw <- cw[, !duplicated(colnames(cw))]
 cw <- cbind(cw, historical.2000$species)
 cw <- filter(cw, distance<1)
-
 
 spc <- species_cleaned
 rownames(spc)<- 1:79
@@ -280,14 +287,6 @@ test2 <- unique(test2$species)
 
 values <- c(1:79)
 names <- rownames(base.df)
-
-#for (y in 1:length(values)){
- # for (i in 1:length(test2$out)){
-  #if (test2$out[i] == values[y]){
-   # dx <- replace(test2$out, i, names[y])
-  #}
-#}
-#}
 
 all_species <- as.data.frame(unique(historic.data$species))
 colnames(all_species) <- "species"
@@ -321,7 +320,6 @@ refound <- subset(new_species,Freq==2)
 refound <- as.data.frame(refound[,-2])
 colnames(refound) <- "species"
 
-
 lost <- rbind(lost_species, refound)
 lost <- as.data.frame(table(lost))
 lost <- subset(lost,Freq==1)
@@ -336,7 +334,6 @@ colnames(recent_species) <- c("species", "type")
 hist_species <- as.data.frame(unique(cc$species))
 hist_species$type <- "Historic species"
 colnames(hist_species) <- c("species", "type")
-
 
 out_of_reach <- rbind(recent_species, hist_species)
 out_of_reach <- as.data.frame(table(out_of_reach))
@@ -377,23 +374,82 @@ df_lone_summary$type <- "eDNA method"
 #Combining the dataframes
 
 df_both_summary <- rbind(df_historic_summary,df_lone_summary)
-
+ecology_fish = read.xlsx(file.path(data_dir, "Ecology_fish_edna_finished.xlsx"), 1, 
+                                   header=T, check.names=FALSE)
+df_both_summary1 = merge(df_both_summary, ecology_fish, by.x = "species", by.y ="Latin name", all.x = TRUE)
 
 cairo_ps(file.path(figs_dir, "Fig2_fish_species.eps"), width=80/25.4, 
          height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
 # Here's the very basic plot but you can make it prettier i.e. select only species of interest, change color scheme, perhaps add the percentage number value on the corresponding box etc.
-ggplot(df_both_summary, aes(type, species, fill= n)) + 
+ggplot(df_both_summary1, aes(type, species, fill= n)) + 
   geom_tile(alpha = 0.7) +
   labs(fill = "") +
+  scale_fill_gradient(low = "#56B1F7", high = "#132B43") +
   theme_classic() + 
     theme(axis.text.y = element_text(size = 6),
           axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
           axis.title.x = element_text(size = 11), # set size of x axis label
           axis.title.y = element_text(size = 11),
           legend.text = element_text(size = 9), # set size of legend text
-          legend.title = element_text(size = 11))
+          legend.title = element_text(size = 11)) 
+
+
 # I thin. k it would be neat if you can turn the values into relative abundance. So basically instead of showing that cod was present in 5 sampling sites, you show that e.g. cod was present in 8% of the sampling sites.
 
+dev.off()
+
+habitat_colors = setNames(color_palette_fish, levels(df_both_summary1$Habitat))
+
+cairo_ps(file.path(figs_dir, "Fig2_fish_habitat.eps"), width=100/25.4, 
+         height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+ggplot(df_both_summary1) +
+  geom_bar(mapping = aes(x = 0.5, y = species, fill = Habitat), 
+       stat = "identity", 
+       alpha = 0.7) +
+  scale_fill_manual(values = habitat_colors) +
+  theme_classic() + 
+  theme(axis.text.y = element_text(size = 6),
+        axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
+        axis.title.x = element_text(size = 11), # set size of x axis label
+        axis.title.y = element_text(size = 11),
+        legend.text = element_text(size = 9), # set size of legend text
+        legend.title = element_text(size = 11)) 
+dev.off()
+
+ecology_colors = setNames(color_palette_fish, levels(df_both_summary1$Ecotype))
+
+cairo_ps(file.path(figs_dir, "Fig2_fish_ecology.eps"), width=100/25.4, 
+         height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+ggplot(df_both_summary1) +
+  geom_bar(mapping = aes(x = 0.5, y = species, fill = Ecotype), 
+       stat = "identity", 
+       alpha = 0.7) +
+  scale_fill_manual(values = ecology_colors) +
+  theme_classic() + 
+  theme(axis.text.y = element_text(size = 6),
+          axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
+          axis.title.x = element_text(size = 11), # set size of x axis label
+          axis.title.y = element_text(size = 11),
+          legend.text = element_text(size = 9), # set size of legend text
+          legend.title = element_text(size = 11)) 
+dev.off()
+
+biogeo_colors = setNames(color_palette_fish, levels(df_both_summary1$Biogeography))
+
+cairo_ps(file.path(figs_dir, "Fig2_fish_biogeo.eps"), width=100/25.4, 
+         height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+ggplot(df_both_summary1) +
+  geom_bar(mapping = aes(x = 0.5, y = species, fill = Biogeography), 
+       stat = "identity", 
+       alpha = 0.7) +
+  scale_fill_manual(values = biogeo_colors) +
+  theme_classic() + 
+  theme(axis.text.y = element_text(size = 6),
+          axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
+          axis.title.x = element_text(size = 11), # set size of x axis label
+          axis.title.y = element_text(size = 11),
+          legend.text = element_text(size = 9), # set size of legend text
+          legend.title = element_text(size = 11)) 
 dev.off()
 
 lone_summary <- subset(df_lone_summary, select = c(species, type))
@@ -579,6 +635,8 @@ df_genus_species <- merge(df_genus_species, coordinates, by = "out")
 #         legend.title = element_text(size = 16))
 # dev.off()
 ```
+
+
 ```{r}
 
 
@@ -602,17 +660,17 @@ df2 <- subset(df_both_map, species %in% c("Engraulis_encrasicolus", "Scomber_sco
 df2$species <- factor(df2$species)
 
 df3 <- merge(df2, coordinates)
-png("warm-water-map.png", height = 400, width = 400)
-ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
-  geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=type)) +
-  labs(x = "Longitude", y = "Latitude")+
-  scale_shape_manual(values = c(15, 16)) +
-  theme(axis.text = element_text(size = 14),
-        axis.title.x = element_text(size = 16), # set size of x axis label
-        axis.title.y = element_text(size = 16),
-        legend.text = element_text(size = 14), # set size of legend text
-        legend.title = element_text(size = 16))
-dev.off()
+# png("warm-water-map.png", height = 400, width = 400)
+# ggmap(get_stamenmap(c(10, 58.8, 11, 60),  maptype = "toner-lite", zoom = 10)) +
+#   geom_point(data=df3, aes(x=Lon, y=Lat, color = species, shape=type)) +
+#   labs(x = "Longitude", y = "Latitude")+
+#   scale_shape_manual(values = c(15, 16)) +
+#   theme(axis.text = element_text(size = 14),
+#         axis.title.x = element_text(size = 16), # set size of x axis label
+#         axis.title.y = element_text(size = 16),
+#         legend.text = element_text(size = 14), # set size of legend text
+#         legend.title = element_text(size = 16))
+# dev.off()
 ```
 ```{r}
 # Basic piechart, må fikse
@@ -693,9 +751,6 @@ df3 <- merge(df2, coordinates)
 
 Fisher exact and chisq tests
 
-
-
-
 ## The statistical analyses
 
 ```{r}
@@ -762,7 +817,7 @@ both.test$below_005 <- ifelse(both.test$value < 0.05, "below 0.05", ifelse(both.
 my_breaks = c(0.01, 0.05, 0.001, 0.0001)
 ggplot(both.test, aes(variable, species, fill = below_005)) +
   geom_tile() +
-  scale_fill_manual(values = c("dark blue", "blue", "light blue"), 
+  scale_fill_manual(values = c("#114477", "#4477AA", "#77AADD"), 
                     labels = c("above 0.1", "below 0.1", "below 0.05"))
 
 
@@ -770,7 +825,7 @@ cairo_ps(file.path(figs_dir, "Fig3_stats_test.eps"), width=90/25.4,
          height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
 ggplot(both.test, aes(variable, species, fill = below_005)) +  
   geom_tile(alpha = 0.5) + 
-  scale_fill_manual(values = c("dark blue", "blue", "light blue"), 
+  scale_fill_manual(values = c("#114477", "#4477AA", "#77AADD"), 
                     labels = c("> 0.1", "< 0.1", "< 0.05")) +
   theme_classic() + 
     theme(axis.text.y = element_text(size = 8),
@@ -781,6 +836,19 @@ ggplot(both.test, aes(variable, species, fill = below_005)) +
           legend.title = element_text(size = 11))
 dev.off()
 
+## VENN DIAGRAM to match methods overlap
+
+MT = 
+
+cairo_ps(file.path(figs_dir, "Fig3b_venn.eps"), width=40/25.4, 
+         height=40/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+ggvenn(MT) +
+     theme(
+        legend.text = element_text(size = 9), # set size of legend text
+        legend.title = element_text(size = 9),
+        plot.subtitle = element_text(size = 9), 
+        text = element_text(size = 9)) # set the font size to 18
+dev.off()
 
 
 ```
@@ -882,6 +950,21 @@ dev.off()
 Here we plot the histogram of number of observed species per site.
 
 ```{r}
+
+cairo_ps(file.path(figs_dir, "S5_histogram.eps"), width=80/25.4, 
+         height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+ggplot(species_cleaned, aes(x = NumSpecies)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(x = "Number of species", y = "Frequency of sites") +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 9),
+        axis.text.x = element_text(size = 9),
+        axis.title.x = element_text(size = 11), # set size of x axis label
+        axis.title.y = element_text(size = 11),
+        legend.text = element_text(size = 9), # set size of legend text
+        legend.title = element_text(size = 11))
+
+dev.off()
 
 ```
 
