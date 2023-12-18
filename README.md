@@ -24,14 +24,13 @@ The analyses code is divided into multiple folders "data", "seq_data_processing"
 ### data
 The "data" folder contains the output data from the sequence data analysis. In addition, it contains mined data from Artsdatabanken and data from the beach seine survey.
 
-environmental_data.csv - data on water properties
-hal.data2.csv
-hal.data.csv
-historic.data_big.csv
-historic.data.csv
-seqtab_nochim.rds - output file from dada2 analysis
-phyloseq_mifish_lca.rds - species tables from the eDNA analysis with taxonomy based on blast and lca
-species_table_lca.csv - species tables from the eDNA analysis based on lca
+environmental_data.csv - data on water properties <br/>
+hal.data.csv - summarized data from the beach seine survey <br/>
+historic.data_big.csv - data used from Artsdatabanken <br/>
+historic.data.csv - filtered data used from Artsdatabanken<br/>
+seqtab_nochim.rds - output file from dada2 analysis <br/>
+phyloseq_mifish_lca.rds - species tables from the eDNA analysis with taxonomy based on blast and lca <br/>
+species_table_lca.csv - species tables from the eDNA analysis based on lca <br/>
 strandnot_2010_2022.csv - data from the beach seine survey
 
 ### Scripts
