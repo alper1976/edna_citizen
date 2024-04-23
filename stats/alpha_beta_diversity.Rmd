@@ -84,7 +84,7 @@ Plot regression between species observations and latitude (from outer to inner O
 
 ```{r}
 
-species_cleaned$NumSpecies = apply(species_cleaned[, -1], 1, count_species)
+species_cleaned$NumSpecies = species_per_sample
 
 species_cleaned$Lat = env_data_cleaned$Lat
 
@@ -97,7 +97,7 @@ cairo_ps(file.path(figs_dir, "Fig5b_regression.eps"), width=80/25.4,
          height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
   ggplot(species_cleaned, aes(x = Lat, y = NumSpecies)) +
     geom_point() +  # Scatter plot
-    geom_smooth(method = "lm", se = TRUE, color = "blue") +  # Regression line with confidence intervals
+    geom_smooth(method = "lm", se = TRUE, color = "brown") +  # Regression line with confidence intervals
     labs(x = "Latitude",
          y = "observed species") +
     theme_classic() +
@@ -120,7 +120,7 @@ Here we plot the histogram of number of observed species per site.
 cairo_ps(file.path(figs_dir, "S5_histogram.eps"), width=80/25.4, 
          height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
   ggplot(species_cleaned, aes(x = NumSpecies)) +
-    geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+    geom_histogram(binwidth = 1, fill = "#4477AA", color = "black", alpha = 0.7) +
     labs(x = "Number of species", y = "Frequency of sites") +
     theme_classic() +
     theme(axis.text.y = element_text(size = 9),

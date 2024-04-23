@@ -36,6 +36,7 @@ figs_dir = file.path("/Users/alexaei/Documents/projects/master_thesis_projects/L
 data_dir = file.path("/Users/alexaei/repos/edna_citizen/data")
 
 species_cleaned = read.csv(file.path(data_dir, "species_cleaned.csv"))
+species_cleaned = species_cleaned[,-1]
 
 ## make supplementary table S6
 #make species into proportion
