@@ -1,0 +1,146 @@
+---
+title: "Species"
+author: "Lone"
+date: "2023-01-16"
+output: html_document
+---
+
+This script parses the data from a citizen science project using eDNA
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load libraries
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(vegan)
+library(ggmap)
+library(sp)
+library(reshape2)
+library(VennDiagram)
+library(ggvenn)
+library(xlsx)
+
+# local functions
+remove_columns_without_underscore <- function(data) {
+  cols_to_keep <- grepl("_", names(data))
+  return(data[, cols_to_keep, drop = FALSE])
+}
+
+
+```
+
+
+## Load data and parse
+
+```{r}
+
+figs_dir = file.path("/Users/alexaei/Documents/projects/master_thesis_projects/Lone/manuscript/Fish_diversity_manuscript_figures")
+data_dir = file.path("/Users/alexaei/repos/edna_citizen/data")
+
+species_table <- read.csv(file.path(data_dir, "species_table_lca_n.csv"), row.names = 1)
+
+# remove genus entries
+species_table <- remove_columns_without_underscore(species_table)
+
+#change the name
+rownames(species_table) <- gsub("_L001_R1_001.fastq.gz", "", rownames(species_table))
+rownames(species_table) <- gsub("\\_.*", "", rownames(species_table))
+
+remove_samples = c("1F", "1L", "2F", "2L", "3F", "3L", "4F", "4L")
+species_table = species_table[!rownames(species_table) %in% remove_samples,]
+
+#Remove all samples with less than 400 total reads
+rowSums(species_table)
+species_cleaned = species_table[which(rowSums(species_table)>400),]
+# remove the positive control
+species_cleaned = species_cleaned[-which(rownames(species_cleaned) == "P"),]
+rowSums(species_cleaned)
+
+# remove species observations with less than 20 reads in a sample
+species_cleaned = species_cleaned %>%
+          mutate_all(~ifelse(. < 20, 0, as.numeric(.)))
+
+#get meta data
+metadata <- as.data.frame(read.csv(file.path(data_dir, "Data_master_project.csv")))
+rownames(metadata) = metadata$ID
+
+#remove data from samples removed in the cleaning process
+keep_samples = rownames(species_cleaned)
+data_cleaned = metadata[rownames(metadata) %in% keep_samples,]
+data_cleaned = data_cleaned[order(rownames(data_cleaned)),]
+rownames(data_cleaned) = data_cleaned$ID
+write.csv(data_cleaned, file.path(data_dir, "data_cleaned.csv"))
+
+species_cleaned = species_cleaned[order(rownames(species_cleaned)),]
+rownames(species_cleaned) = species_cleaned$X
+species_cleaned = species_cleaned[rowSums(species_cleaned) > 0,-1]
+species_cleaned = species_cleaned[,colSums(species_cleaned) > 0]
+rownames(species_cleaned) = data_cleaned$ID
+write.csv(species_cleaned, file.path(data_dir, "species_cleaned.csv"))
+
+edna_data = cbind(species_cleaned, data_cleaned)
+edna_data = edna_data[,c(1:58, 61, 62)]
+edna_melt = melt(edna_data, id.vars = c("Lon", "Lat"))
+edna_melt = edna_melt[!edna_melt$value < 1,]
+
+colnames(edna_melt) = c("Lon", "Lat", "species", "value")
+write.csv(edna_melt, file.path(data_dir, "edna_cleaned.csv"))
+```
+
+## Parse historical (observational) data
+### Artsdatabanken (historic_data)
+```{r}
+historic_data = read.csv(file.path(data_dir, "historic.data.csv"), sep = ";")
+
+historic_data = subset(historic_data, select = c(institution, validScientificName, 
+                                                  latitude, longitude, dateTimeCollected ))
+
+historic_data$validScientificName = gsub(" ", "_", historic_data$validScientificName)
+
+colnames(historic_data) = c("institution", "species", "Lat", "Lon", "date")
+
+historic_data = historic_data[grepl("_", historic_data$species), ]
+
+# fix inconsistent species names
+historic_data$species[historic_data$species == "Pomatoschistus_flavescens"] =
+  "Gobiusculus_flavescens"
+historic_data$species[historic_data$species == "Gymnocephalus_cernuus"] = 
+  "Gymnocephalus_cernua"
+
+#select only observations made after 2000
+time = as.Date(strptime(historic_data$date, "%d.%m.%Y %H:%M:%S"))
+sum(time > as.Date("2017-1-1"))
+hist2000_data = historic_data[time > as.Date("2017-1-1"), ]
+
+write.csv(hist2000_data, file.path(data_dir, "historical2000_data.csv"))
+write.csv(historic_data, file.path(data_dir, "historical_data_cleaned.csv"))
+```
+
+### Beach Seine data (hal_data)
+
+```{r}
+hal_data = read.csv(file.path(data_dir, "hal.data.csv"), check.names = F, sep =",")
+
+Gadus_morhua = hal_data[, 4] + hal_data[, 7]
+hal_data = hal_data[, -c(3,7)]
+hal_data[, 4] = Gadus_morhua
+
+hal_melt = melt(hal_data, id.vars = c("Lon", "Lat"))
+hal_melt = hal_melt[!hal_melt$value < 1,]
+hal_melt = hal_melt[grepl("_", hal_melt$variable), ]
+
+colnames(hal_melt) = c("Lon", "Lat", "species", "value")
+write.csv(hal_melt, file.path(data_dir, "hal_data_cleaned.csv"))
+
+```
+
+
+
+
+
+
+
+

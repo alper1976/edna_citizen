@@ -1,0 +1,86 @@
+---
+title: "Species"
+author: "Lone"
+date: "2023-01-16"
+output: html_document
+---
+
+Here we compute supplementary Figure S6. The 15 most common fish species are presented in a barplot representing the proportion of reads at each location.  
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load libraries
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(vegan)
+library(ggmap)
+library(sp)
+library(reshape2)
+library(VennDiagram)
+library(ggvenn)
+library(xlsx)
+
+
+```
+
+
+## Load data and parse
+
+```{r}
+
+figs_dir = file.path("/Users/alexaei/Documents/projects/master_thesis_projects/Lone/manuscript/Fish_diversity_manuscript_figures")
+data_dir = file.path("/Users/alexaei/repos/edna_citizen/data")
+
+species_cleaned = read.csv(file.path(data_dir, "species_cleaned.csv"))
+
+## make supplementary table S6
+#make species into proportion
+prop_species_clean = t(prop.table(as.matrix(species_cleaned), margin = 1)*100)
+prop_species_clean = prop_species_clean[order(rowSums(-prop_species_clean)),]
+
+#extract only the 15 most species
+prop_species_clean = prop_species_clean[1:15,]
+melted_prop_species_clean = melt(prop_species_clean)
+
+colnames(melted_prop_species_clean) <- c("X1", "X2", "value")
+
+melted_prop_species_clean = dplyr::arrange(melted_prop_species_clean, X1, desc(value))
+melted_prop_species_clean$X2 = factor(melted_prop_species_clean$X2, levels = unique(melted_prop_species_clean$X2))
+
+#make color palett
+color_palette_fish = c("#114477", "#4477AA", "#77AADD", "#117755",
+                          "#44AA88", "#99CCBB", "#777711", "#AAAA44",
+                          "#DDDD77", "#771111", "#AA4444", "#DD7777",
+                          "#771144", "#AA4477", "#DD77AA")
+
+fish_colors = setNames(color_palette_fish, levels(melted_prop_species_clean$X1))
+
+
+
+cairo_ps(file.path(figs_dir, "S6_fish_species.eps"), width=160/25.4, height=160/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+ggplot(melted_prop_species_clean, aes(x = X2, y = value, fill = X1), cex=4)+
+  geom_bar(stat = "identity", position = "stack", alpha = .5, width = 1, size = 10)+
+  guides(fill = guide_legend(title = "Fish species"))+
+  coord_flip() +
+  xlab("Sampling points")+
+  ylab("Proportion of reads [%]")+
+  scale_fill_manual(values = fish_colors)+
+  scale_x_discrete(limits = rev(levels(melted_prop_species_clean$X2))) +
+  theme_classic() + 
+  theme(axis.text = element_text(size = 9),
+        axis.title.x = element_text(size = 11), # set size of x axis label
+        axis.title.y = element_text(size = 11),
+        legend.text = element_text(size = 11), # set size of legend text
+        legend.title = element_text(size = 11))
+
+dev.off()
+
+
+```
+
+
+

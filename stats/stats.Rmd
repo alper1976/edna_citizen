@@ -33,51 +33,14 @@ library(xlsx)
 figs_dir = file.path("/Users/alexaei/Documents/projects/master_thesis_projects/Lone/manuscript/Fish_diversity_manuscript_figures")
 data_dir = file.path("/Users/alexaei/repos/edna_citizen/data")
 
-species <- read.csv(file.path(data_dir, "species_table_lca_n.csv"), row.names = 1)
+species_cleaned = read.csv(file.path(data_dir, "species_cleaned.csv"))
 
-# remove genus entries
-
-remove_columns_without_underscore <- function(data) {
-  cols_to_keep <- grepl("_", names(data))
-  return(data[, cols_to_keep, drop = FALSE])
-}
-
-species <- remove_columns_without_underscore(species)
-
-#change the name
-rownames(species) <- gsub("_L001_R1_001.fastq.gz", "", rownames(species))
-rownames(species) <- gsub("\\_.*", "", rownames(species))
-
-remove_samples = c("1F", "1L", "2F", "2L", "3F", "3L", "4F", "4L")
-species = species[!rownames(species) %in% remove_samples,]
-
-
-#Remove all samples with less than 400 total reads
-rowSums(species)
-species_cleaned = species[which(rowSums(species)>400),]
-# remove the positive control
-species_cleaned = species_cleaned[-which(rownames(species_cleaned) == "P"),]
-rowSums(species_cleaned)
-
-# remove species observations with less than 20 reads per sample
-species_cleaned = species_cleaned %>%
-          mutate_all(~ifelse(. < 20, 0, as.numeric(.)))
-
-#get meta data
-data <- as.data.frame(read.csv(file.path(data_dir, "Data_master_project.csv")))
-rownames(data) = data$ID
-
-#remove data from samples removed in the cleaning process
-keep_samples = rownames(species_cleaned)
-data_cleaned = data[rownames(data) %in% keep_samples,]
-data_cleaned = data_cleaned[order(rownames(data_cleaned)),]
-species_cleaned = species_cleaned[order(rownames(species_cleaned)),]
-write.csv(species_cleaned, file.path(data_dir, "species_cleaned.csv"))
-
+# make supplementary table S6
 #make species into proportion
 prop_species_clean = t(prop.table(as.matrix(species_cleaned), margin = 1)*100)
 prop_species_clean = prop_species_clean[order(rowSums(-prop_species_clean)),]
-#only the 15 most species
+
+#extract only the 15 most species
 prop_species_clean = prop_species_clean[1:15,]
 melted_prop_species_clean = melt(prop_species_clean)
 

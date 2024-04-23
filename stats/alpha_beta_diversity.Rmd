@@ -1,0 +1,227 @@
+---
+title: "Species"
+author: "Lone"
+date: "2023-01-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load libraries
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(vegan)
+library(ggmap)
+library(sp)
+library(reshape2)
+library(VennDiagram)
+library(ggvenn)
+library(xlsx)
+library(geosphere)
+
+## local functions
+#Create a function to generate a continuous color palette
+rbPal <- colorRampPalette(c('red','blue'))
+
+count_species <- function(row) {
+  sum(row > 0)
+}
+
+
+```
+
+
+## Load data and parse
+
+```{r}
+
+figs_dir = file.path("/Users/alexaei/Documents/projects/master_thesis_projects/Lone/manuscript/Fish_diversity_manuscript_figures")
+data_dir = file.path("/Users/alexaei/repos/edna_citizen/data")
+
+species_cleaned = read.csv(file.path(data_dir, "species_cleaned.csv"))
+keep_samples = rownames(species_cleaned)
+
+# get presence absence matrix
+species_presence <- as.matrix((species_cleaned>0)+0)
+
+# get number of species per sample
+species_per_sample = rowSums(species_presence)
+summary(species_per_sample)
+```
+
+## Merging environmental and species data
+```{r}
+
+#get data on environmental parameters
+env_data <- as.data.frame(read.csv(file.path(data_dir, "environmental_data.csv"), sep = ";"))
+env_data <- filter(env_data,`ID`!="NA")
+rownames(env_data) = env_data$ID
+env_data <- env_data[1:7]
+
+data <- as.data.frame(read.csv(file.path(data_dir, "Data_master_project.csv")))
+rownames(data) = data$ID
+
+tmp = merge(x=env_data,y=data, by="ID", all.x=TRUE) %>%
+  mutate(TN = as.numeric(TN))
+
+# remove data corresponding to missing localities
+env_data_cleaned = tmp[rownames(tmp) %in% keep_samples,]
+rownames(env_data_cleaned) = env_data_cleaned$ID
+env_data_cleaned = env_data_cleaned[order(rownames(env_data_cleaned)),]
+groups <- env_data_cleaned$group
+
+
+
+```
+
+## Regression analysis latitude versus species detection
+
+Plot regression between species observations and latitude (from outer to inner Oslofjord)
+
+```{r}
+
+species_cleaned$NumSpecies = apply(species_cleaned[, -1], 1, count_species)
+
+species_cleaned$Lat = env_data_cleaned$Lat
+
+# Create a new variable that indicates whether the species is below or above a certain latitude (Drobaksill)
+lat_group = ifelse(env_data_cleaned$Lat > 59.6678, "above", "below")
+species_cleaned$lat_group = lat_group
+env_data_cleaned$lat_group = lat_group
+
+cairo_ps(file.path(figs_dir, "Fig5b_regression.eps"), width=80/25.4, 
+         height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+  ggplot(species_cleaned, aes(x = Lat, y = NumSpecies)) +
+    geom_point() +  # Scatter plot
+    geom_smooth(method = "lm", se = TRUE, color = "blue") +  # Regression line with confidence intervals
+    labs(x = "Latitude",
+         y = "observed species") +
+    theme_classic() +
+    theme(axis.text.y = element_text(size = 9),
+          axis.text.x = element_text(size = 9),
+          axis.title.x = element_text(size = 11), # set size of x axis label
+          axis.title.y = element_text(size = 11),
+          legend.text = element_text(size = 9), # set size of legend text
+          legend.title = element_text(size = 11))
+dev.off()
+
+```
+
+## Make prevalence histogram
+
+Here we plot the histogram of number of observed species per site.
+
+```{r}
+
+cairo_ps(file.path(figs_dir, "S5_histogram.eps"), width=80/25.4, 
+         height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+  ggplot(species_cleaned, aes(x = NumSpecies)) +
+    geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+    labs(x = "Number of species", y = "Frequency of sites") +
+    theme_classic() +
+    theme(axis.text.y = element_text(size = 9),
+          axis.text.x = element_text(size = 9),
+          axis.title.x = element_text(size = 11), # set size of x axis label
+          axis.title.y = element_text(size = 11),
+          legend.text = element_text(size = 9), # set size of legend text
+          legend.title = element_text(size = 11))
+dev.off()
+
+```
+
+## Beta diversity
+Here we perform the beta diversity analyses
+```{r}
+h_nestedness = nestednodf(species_presence, order = F)
+
+# Check distribution of residuals
+pdf(file.path(figs_dir, "qqnorm.pdf"))
+  qqnorm(species_presence)
+dev.off()
+
+########### Create NMDS object #############
+# Standardize data
+
+fish_mds = metaMDS(species_presence, distance = "jaccard", autotransform = FALSE, try = 200)
+
+## subset NAs
+
+scores_mds = scores(fish_mds)
+fish_mds$stress # 0.092
+
+res = as.data.frame(merge(scores_mds$sites,
+                          env_data_cleaned,
+                          by.x = "row.names",
+                          by.y = "row.names"))
+
+cairo_ps(file.path(figs_dir, "nmds_groups.eps"),
+                              width=180/25.4,
+                              height=180/25.4,
+                              pointsize = 4,
+                              bg = FALSE,
+                              fallback_resolution = 300)
+ggplot(res, aes(NMDS1, NMDS2)) +
+       geom_point(aes(colour=group, shape = group)) +
+       theme_bw(14) +
+       xlab("Dimension 1") +
+       ylab("Dimension 2")
+dev.off()
+
+latitude = env_data_cleaned[, "Lat"]
+
+cairo_ps(file.path(figs_dir, "S7_nmds.eps"),
+                              width=180/25.4,
+                              height=180/25.4,
+                              pointsize = 4,
+                              bg = FALSE,
+                              fallback_resolution = 300)
+ggplot(res, aes(NMDS1, NMDS2)) +
+       geom_point(aes(colour=Lat, shape = lat_group)) +
+       theme_bw(14) +
+       xlab("Dimension 1") +
+       ylab("Dimension 2") +
+       scale_colour_gradient(low = "#D1BBD7", high="#771111")
+dev.off()
+
+
+########## Permanova - adonis ########
+
+adonis2(data.frame(species_presence) ~ groups, data = data.frame(env_data_cleaned))
+adonis2(data.frame(species_presence) ~ lat_group, data = data.frame(env_data_cleaned))
+adonis2(data.frame(species_presence) ~ TN, data = data.frame(env_data_cleaned))
+subset_env_data = data.matrix(env_data_cleaned [,c(2:6,9)])
+adonis2(data.frame(species_presence) ~ ., data = data.frame(subset_env_data))
+
+
+######### Mantel tests #############
+
+# geographic distance
+geo_data = data.frame(lat  = env_data_cleaned[, "Lat"], lon  = env_data_cleaned[, "Lon"])
+rownames(geo_data) = rownames(env_data_cleaned)
+geo_dist = distm(geo_data)
+
+# community distance
+species_dist <- vegdist(species_presence, method = "jaccard")
+
+# environmental distance
+subset_env_data = data.matrix(env_data_cleaned [,2:6])
+env_table = scale(subset_env_data, scale=T, center=T)
+env_dist = vegdist(env_table, method="euclidean")
+
+mantel.partial(species_dist, env_dist, geo_dist, method="pearson", permutations=999)
+mantel.partial(species_dist, geo_dist, env_dist, method="pearson", permutations=999)
+
+
+
+```
+## Venn diagrams
+Here we look into the overlaps of species in the outer and inner fjord
+
+```{r}
+
+```
+

@@ -1,0 +1,531 @@
+---
+title: "Species"
+author: "Lone"
+date: "2023-01-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load libraries
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(vegan)
+library(ggmap)
+library(sp)
+library(reshape2)
+library(VennDiagram)
+library(ggvenn)
+library(xlsx)
+
+# Local Functions
+
+# extract corresponding sampling points and add IDs
+extract_corresponding = function(target, base, distance = 1) {
+# target = hal_data
+# base = data_cleaned  
+target_mtx = as.matrix(unique(target[ ,c("Lon", "Lat")]))
+base_mtx = as.matrix(unique(base[ ,c("Lon", "Lat")]))
+
+correspond_out = lapply(1:nrow(target_mtx), function(x){
+     spDistsN1(pts = base_mtx, pt = target_mtx[x, ], longlat =T)}) %>%
+     lapply(which.min) %>%
+     unlist %>%
+     bind_cols(target_mtx, out = .)
+
+# extract corresponding minimum distance between sampling sites of the historical and eDNA data
+correspond_dis = lapply(1:nrow(target_mtx), function(x){
+     spDistsN1(pts = base_mtx, pt = target_mtx[x, ], longlat =T)}) %>%
+     lapply(min) %>%
+     unlist %>%
+     bind_cols(target_mtx, distance = .)
+
+# extract pairs where the distance is less than 1 km
+correspond_table = cbind(correspond_out, correspond_dis)
+#correspond_table = cbind(correspond_table, data.frame(target$species))
+correspond_table = correspond_table[,-c(1:2)]
+correspond_table = filter(correspond_table, distance<1)
+dim(correspond_table)
+colnames(correspond_table) <- c("out", "Lat", "Lon", "distance")
+print(correspond_table)
+}
+
+extract_species_table = function(species_table, correspond_table, distance = 1) {
+#species_table = edna_cleaned
+#correspond_table = correspondence
+target_mtx = as.matrix(species_table[ ,c("Lon", "Lat")])
+base_mtx = as.matrix(correspond_table[ ,c("Lat", "Lon")])
+species_dist_out = species_table
+species_dist_out$out = NA
+species_dist_out$distance = NA
+for (x in 1:nrow(target_mtx)) {
+  #x = 3
+  distances = spDistsN1(pts = base_mtx, pt = target_mtx[x, ], longlat =T) 
+  out = correspond_table$out
+  position = which.min(distances)
+  species_dist_out[x, "distance"] = distances[position]
+  species_dist_out[x, "out"] = out[position]
+}
+
+
+# correspond_dis = lapply(1:nrow(target_mtx), function(x){
+#      spDistsN1(pts = base_mtx, pt = target_mtx[x, ], longlat =T)}) %>%
+#      lapply(min) %>%
+#      unlist %>%
+#      bind_cols(species_table, distance = .)
+# # colnames(correspond_table) <- c("X", "Lat", "Lon", "species", "value", "distance", "out")
+correspond_dis = filter(species_dist_out, distance<1)
+#  
+}
+
+```
+
+## Load data and parse
+
+```{r}
+
+figs_dir = file.path("/Users/alexaei/Documents/projects/master_thesis_projects/Lone/manuscript/Fish_diversity_manuscript_figures")
+data_dir = file.path("/Users/alexaei/repos/edna_citizen/data")
+
+# edna data
+species_cleaned = read.csv(file.path(data_dir, "species_cleaned.csv"))
+edna_cleaned = read.csv(file.path(data_dir, "edna_cleaned.csv"))
+data_cleaned = read.csv(file.path(data_dir, "data_cleaned.csv"))
+
+# historic data from Artsdatabanken (from 2017)
+historical_2000 = read.csv(file.path(data_dir, "historical2000_data.csv"))
+
+# Beach Seine data
+hal_data = read.csv(file.path(data_dir, "hal_data_cleaned.csv")) 
+
+# all artsdatabanken data
+historic_data = read.csv(file.path(data_dir, "historical_data_cleaned.csv"))
+
+```
+
+## compare observational (Beach Seine + Artsdatabanken) and eDNA data
+
+```{r}
+
+combined_obs = rbind(historical_2000[,c("Lat", "Lon", "species")], hal_data[,c("Lat", "Lon", "species")])
+
+# extract pairs where the distance is less than 1 km
+correspondence = extract_corresponding(combined_obs, edna_cleaned)
+comp_edna = extract_species_table(edna_cleaned, correspondence)
+
+comp_obs = extract_species_table(combined_obs, correspondence)
+
+# compare artsdatabanken
+correspond_artdb = extract_corresponding(historical_2000, edna_cleaned)
+comp_artdb = extract_species_table(historical_2000, correspond_artdb)
+
+correspond_hal = extract_corresponding(hal_data, edna_cleaned)
+comp_hal = extract_species_table(hal_data, correspond_hal)
+
+```
+
+### comparison of species lists between Beach Seine, Artsdatabanken and eDNA data using all sampling points of the three datasets
+
+```{r}
+# Artsdatabanken
+historical_2000_spc_list = unique(historical_2000$species)
+# keep only species - remove genera and family names
+historical_2000_spc_list = historical_2000_spc_list[grepl("_", historical_2000_spc_list)]
+
+# eDNA data - this study
+edna_spc_list = unique(colnames(species_cleaned))[-1]
+
+# Beach Seine data
+hal_spc_list = unique(hal_data$species)
+
+# compare Beach Seine and Artsdatabanken data
+intersect(historical_2000_spc_list, hal_spc_list)
+unique_to_artsdatbanken <- setdiff(historical_2000_spc_list, hal_spc_list)
+length(unique_to_artsdatbanken)
+
+unique_to_beachseine <- setdiff(hal_spc_list, historical_2000_spc_list)
+length(unique_to_beachseine)
+
+# compare Beach Seine and eDNA data
+intersect(edna_spc_list, hal_spc_list)
+unique_to_edna <- setdiff(edna_spc_list, hal_spc_list)
+length(unique_to_edna)
+
+unique_to_beachseine <- setdiff(hal_spc_list, edna_spc_list)
+length(unique_to_beachseine)
+
+# compare Artsdatabanken and eDNA data
+intersect(edna_spc_list, historical_2000_spc_list)
+unique_to_edna <- setdiff(edna_spc_list, historical_2000_spc_list)
+length(unique_to_edna)
+
+unique_to_artsdatbanken<- setdiff(historical_2000_spc_list, edna_spc_list)
+length(unique_to_artsdatbanken)
+
+# compare Artsdatabanken + Beach seine and eDNA data
+obs_spc_list = c(historical_2000_spc_list, hal_spc_list)
+
+unique_to_edna <- setdiff(edna_spc_list, obs_spc_list)
+length(unique_to_edna)
+
+unique_to_obs <- setdiff(obs_spc_list, edna_spc_list)
+length(unique_to_obs)
+
+# rediscovered with eDNA since not found in observational data since 2017
+
+intersect(unique_to_edna, unique(historic_data$species))
+unique_to_edna <- setdiff(edna_spc_list, unique(historic_data$species))
+
+# make a table
+# Create a data frame to store the presence of each string in the lists
+presence_table <- data.frame(
+  Strings = unique(c(edna_spc_list, hal_spc_list, historical_2000_spc_list)),
+  In_List1 = FALSE,
+  In_List2 = FALSE,
+  In_List3 = FALSE
+)
+
+# Update presence_table based on the presence of each string in the lists
+for (string in presence_table$Strings) {
+  presence_table$In_List1[presence_table$Strings == string] <- string %in% edna_spc_list
+  presence_table$In_List2[presence_table$Strings == string] <- string %in% hal_spc_list
+  presence_table$In_List3[presence_table$Strings == string] <- string %in% historical_2000_spc_list
+}
+
+colnames(presence_table) = c("species", "eDNA", "Beach Seine", "Artsdatabanken")
+
+write.csv(presence_table, file.path(data_dir, "presence_comparison_methods.csv"))
+
+```
+
+### comparison of species lists between Beach Seine, Artsdatabanken and eDNA data using shared sampling points of the three datasets (less than 1 km apart)
+
+```{r}
+# Observatinal data (Beach Seine + Artsdatabanken)
+observational_spc_list = unique(comp_obs$species)
+
+# eDNA data - this study
+edna_spc_list = unique(comp_edna$species)
+
+# compare 
+intersect(observational_spc_list, edna_spc_list)
+unique_to_observational <- setdiff(observational_spc_list, edna_spc_list)
+length(unique_to_observational)
+
+unique_to_edna <- setdiff(edna_spc_list, observational_spc_list)
+length(unique_to_edna)
+
+# make a table
+# Create a data frame to store the presence of each string in the lists
+presence_table <- data.frame(
+  Strings = unique(c(edna_spc_list, observational_spc_list)),
+  In_List1 = FALSE,
+  In_List2 = FALSE
+)
+
+# Update presence_table based on the presence of each string in the lists
+for (string in presence_table$Strings) {
+  presence_table$In_List1[presence_table$Strings == string] <- string %in% edna_spc_list
+  presence_table$In_List2[presence_table$Strings == string] <- string %in% observational_spc_list
+  }
+
+colnames(presence_table) = c("species", "eDNA", "Observational data")
+
+write.csv(presence_table, file.path(data_dir, "presence_comparison_sites_2methods.csv"))
+
+```
+## comparisons of method outputs
+
+add sample IDs to identify which points are closest and run fisher.test and chisq.test
+
+```{r}
+
+# Grouping your dataframe based on species and then taking the number of observations in each group
+comp_edna_sub <- subset(comp_edna, select = c(out, species))
+
+comp_edna_summary <-  comp_edna_sub %>%
+  group_by(species) %>%
+  dplyr::summarize(n= length(species))
+
+comp_edna_summary$type <- "eDNA data"
+
+comp_obs_sub <- subset(comp_obs, select = c(out, species))
+
+comp_obs_summary <-  comp_obs_sub %>%
+  group_by(species) %>%
+  dplyr::summarize(n= length(species))
+
+comp_obs_summary$type <- "observational data"
+
+
+#Combining the dataframes
+
+both_data_summary <- rbind(comp_obs_summary,comp_edna_summary)
+ecology_fish = read.xlsx(file.path(data_dir, "Ecology_fish_edna_finished.xlsx"), 1, 
+                                   header=T, check.names=FALSE)
+species_both_data = merge(both_data_summary, ecology_fish, by.x = "species", by.y ="Latin name", all.x = TRUE)
+
+svg(file.path(figs_dir, "Fig2_fish_species.svg"), width=80/25.4, 
+         height=160/25.4, pointsize = 4)
+# Here's the very basic plot but you can make it prettier i.e. select only species of interest, change color scheme, perhaps add the percentage number value on the corresponding box etc.
+ggplot(species_both_data, aes(type, species, fill= n)) + 
+  geom_tile(alpha = 0.7) +
+  labs(fill = "") +
+  scale_fill_gradient(low = "#56B1F7", high = "#132B43") +
+  theme_classic() + 
+    theme(axis.text.y = element_text(size = 6),
+          axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
+          axis.title.x = element_text(size = 11), # set size of x axis label
+          axis.title.y = element_text(size = 11),
+          legend.text = element_text(size = 9), # set size of legend text
+          legend.title = element_text(size = 11)) 
+
+
+# I thin. k it would be neat if you can turn the values into relative abundance. So basically instead of showing that cod was present in 5 sampling sites, you show that e.g. cod was present in 8% of the sampling sites.
+
+dev.off()
+color_palette_habitat = c("#117755",
+                          "#99CCBB", 
+                          "#AAAA44",
+                          "#771111", 
+                          "#DD7777",
+                          "#AA4477", 
+                          "#4477AA")
+
+
+habitat_colors = setNames(color_palette_habitat, levels(species_both_data$Habitat))
+
+svg(file.path(figs_dir, "Fig2_fish_habitat.svg"), width=100/25.4, 
+         height=160/25.4, pointsize = 4)
+ggplot(species_both_data) +
+  geom_bar(mapping = aes(x = 0.5, y = species, fill = Habitat), 
+       stat = "identity", 
+       alpha = 0.7) +
+  scale_fill_manual(values = habitat_colors) +
+  theme_classic() + 
+  theme(axis.text.y = element_text(size = 6),
+        axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
+        axis.title.x = element_text(size = 11), # set size of x axis label
+        axis.title.y = element_text(size = 11),
+        legend.text = element_text(size = 9), # set size of legend text
+        legend.title = element_text(size = 11)) 
+dev.off()
+
+color_palette_ecology = c("#114477", 
+                          "#4477AA", 
+                          "#44AA88", 
+                          "#DDDD77", 
+                          "#771144")
+
+
+ecology_colors = setNames(color_palette_ecology, levels(species_both_data$Ecotype))
+
+svg(file.path(figs_dir, "Fig2_fish_ecology.svg"), width=100/25.4, 
+         height=160/25.4, pointsize = 4)
+ggplot(species_both_data) +
+  geom_bar(mapping = aes(x = 0.5, y = species, fill = Ecotype), 
+       stat = "identity", 
+       alpha = 0.7) +
+  scale_fill_manual(values = ecology_colors) +
+  theme_classic() + 
+  theme(axis.text.y = element_text(size = 6),
+          axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
+          axis.title.x = element_text(size = 11), # set size of x axis label
+          axis.title.y = element_text(size = 11),
+          legend.text = element_text(size = 9), # set size of legend text
+          legend.title = element_text(size = 11)) 
+dev.off()
+
+color_palette_biogo = c("#77AADD",
+                        "#777711",
+                        "#AA4444",
+                        "#DD77AA")
+  
+  
+biogeo_colors = setNames(color_palette_biogo, levels(species_both_data$Biogeography))
+
+svg(file.path(figs_dir, "Fig2_fish_biogeo.svg"), width=100/25.4, 
+         height=160/25.4, pointsize = 4)
+ggplot(species_both_data) +
+  geom_bar(mapping = aes(x = 0.5, y = species, fill = Biogeography), 
+       stat = "identity", 
+       alpha = 0.7) +
+  scale_fill_manual(values = biogeo_colors) +
+  theme_classic() + 
+  theme(axis.text.y = element_text(size = 6),
+          axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
+          axis.title.x = element_text(size = 11), # set size of x axis label
+          axis.title.y = element_text(size = 11),
+          legend.text = element_text(size = 9), # set size of legend text
+          legend.title = element_text(size = 11)) 
+dev.off()
+
+eDNA_summary <- subset(comp_edna_summary, select = c(species, type))
+obs_summary <- subset(comp_obs_summary, select = c(species, type))
+
+
+```
+
+## Comparisons of methods
+
+Fisher exact and chisq tests
+
+### The statistical analyses
+
+```{r}
+ft.p = list() # for fisher test propability
+ft.o = list() # for fisher test odds ratio
+sn = unique(c(comp_edna$species, comp_obs$species))
+for (specie in sn){
+  subset_cc = comp_obs[comp_obs$species == specie,]
+  subset_og = comp_edna[comp_edna$species == specie,]
+  merged_species = merge(subset_cc, subset_og, by = "out", all = TRUE)
+  merged_species$species.y = as.character(merged_species$species.y)
+  merged_species[is.na(merged_species)] <- 0
+  if(length(unique(merged_species$species.x))>1 &&
+     length(unique(merged_species$species.y))>1){
+
+    ft <- fisher.test(merged_species$species.x, merged_species$species.y, simulate.p.value = T)
+    ft.p <- append(ft.p, ft$p.value)
+    ft.o <- append(ft.o, ct$p.value)
+    } else{
+    ft.p <- append(ft.p, NA)
+    ft.o <- append(ft.o, NA)
+  }  
+}
+names(ft.p) = sn
+names(ft.o) = sn
+ft.o <- t(as.data.frame(ft.o))
+
+ft.p.adjust <- p.adjust(ft.p, method = "hochberg", n = length(ft.p))
+ft.p.adjust <- as.data.frame(ft.p.adjust)
+
+ft_results <- as.data.frame(cbind(ft.p.adjust, ft.o))
+ft_results$species  <- rownames(ft_results)
+colnames(ft_results) <- c("p value","odds ratio", "species")
+write.csv(ft_results, file.path(figs_dir, "fisher_test_results.csv"))
+
+ft_results_cleaned <- na.omit(ft_results)
+
+ft_results_cleaned <- melt(ft_results_cleaned)
+
+# Create a binary variable indicating whether each value is below 0.1
+ft_results_cleaned$below_005 <- ifelse(ft_results_cleaned$value < 0.05, "below 0.05", 
+                                ifelse(ft_results_cleaned$value < 0.1, "below 0.1", "above 0.1"))
+
+# Plot the heatmap with a manual fill scale
+
+my_breaks = c(0.01, 0.05, 0.001, 0.0001)
+ggplot(ft_results_cleaned, aes(variable, species, fill = below_005)) +
+  geom_tile() +
+  scale_fill_manual(values = c("#114477", "#4477AA", "#77AADD"), 
+                    labels = c("above 0.1", "below 0.1", "below 0.05"))
+
+
+svg(file.path(figs_dir, "Fig3_stats_test.svg"), width=90/25.4, 
+         height=160/25.4, pointsize = 4)
+ggplot(ft_results_cleaned, aes(variable, species, fill = below_005)) +  
+  geom_tile(alpha = 0.5) + 
+  scale_fill_manual(values = c("#114477", "#4477AA", "#77AADD"), 
+                    labels = c("> 0.1", "< 0.1", "< 0.05")) +
+  theme_classic() + 
+    theme(axis.text.y = element_text(size = 8),
+          axis.text.x = element_text(size = 8, angle = 15, hjust = 1),
+          axis.title.x = element_text(size = 11), # set size of x axis label
+          axis.title.y = element_text(size = 11),
+          legend.text = element_text(size = 9), # set size of legend text
+          legend.title = element_text(size = 11))
+dev.off()
+
+
+
+```
+
+## Venn diagram
+
+Plotting species presence and overlap between inner and outer Oslofjord
+
+```{r}
+
+# Create a new variable that indicates whether the species is below or above a certain latitude
+lat_above = edna_cleaned[edna_cleaned$Lat > 59.6678, ]
+lat_below = edna_cleaned[edna_cleaned$Lat < 59.6678, ]
+spc_above = unique(lat_above$species)
+spc_below = unique(lat_below$species)
+inner_outer = list()
+inner_outer$inner = spc_above
+inner_outer$outer = spc_below
+
+# create venn diagram and display all the sets
+svg(file.path(figs_dir, "Fig5a_venn.svg"), width=80/25.4, 
+         height=80/25.4, pointsize = 4)
+ggvenn(inner_outer) +
+     theme(
+        legend.text = element_text(size = 11), # set size of legend text
+        legend.title = element_text(size = 11),
+        plot.subtitle = element_text(size = 11), 
+        text = element_text(size = 11)) # set the font size to 18
+dev.off()
+```
+
+## Regression analysis latitude versus species detection
+
+Plot regression between species observations and latitude (from outer to inner Oslofjord)
+
+```{r}
+
+count_species <- function(row) {
+  sum(row > 0)
+}
+
+species_cleaned$NumSpecies <- apply(species_cleaned[, -1], 1, count_species)
+
+lat_group <- ifelse(data_cleaned$Lat > 59.667800, "above", "below")
+
+species_cleaned$lat_group = lat_group
+species_cleaned$Lat = data_cleaned$Lat
+
+cairo_ps(file.path(figs_dir, "Fig5b_regression.eps"), width=80/25.4, 
+         height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+ggplot(species_cleaned, aes(x = Lat, y = NumSpecies)) +
+  geom_point() +  # Scatter plot
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +  # Regression line with confidence intervals
+  labs(x = "Latitude",
+       y = "observed species") +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 9),
+        axis.text.x = element_text(size = 9),
+        axis.title.x = element_text(size = 11), # set size of x axis label
+        axis.title.y = element_text(size = 11),
+        legend.text = element_text(size = 9), # set size of legend text
+        legend.title = element_text(size = 11))
+dev.off()
+
+```
+
+## Make prevalence histogram
+
+Here we plot the histogram of number of observed species per site.
+
+```{r}
+
+cairo_ps(file.path(figs_dir, "S5_histogram.eps"), width=80/25.4, 
+         height=80/25.4, pointsize = 4, bg = FALSE, fallback_resolution = 300)
+ggplot(species_cleaned[,-1], aes(x = NumSpecies)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(x = "Number of species", y = "Frequency of sites") +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 9),
+        axis.text.x = element_text(size = 9),
+        axis.title.x = element_text(size = 11), # set size of x axis label
+        axis.title.y = element_text(size = 11),
+        legend.text = element_text(size = 9), # set size of legend text
+        legend.title = element_text(size = 11))
+
+dev.off()
+
+```
