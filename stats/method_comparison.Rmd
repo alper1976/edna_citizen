@@ -391,7 +391,7 @@ for (specie in sn){
 
     ft <- fisher.test(merged_species$species.x, merged_species$species.y, simulate.p.value = T)
     ft.p <- append(ft.p, ft$p.value)
-    ft.o <- append(ft.o, ct$p.value)
+    ft.o <- append(ft.o, ft$estimate)
     } else{
     ft.p <- append(ft.p, NA)
     ft.o <- append(ft.o, NA)
